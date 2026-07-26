@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ポートフォリオ効率的フロンティア分析</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg: #0d1117;
+    --bg-grid: #10151d;
+    --panel: #161d27;
+    --panel-alt: #1b2430;
+    --border: #2a3542;
+    --text: #e8ecef;
+    --text-dim: #8a97a3;
+    --text-faint: #5b6672;
+    --gold: #c9a15a;
+    --teal: #5fb3b3;
+    --rose: #d1685e;
+    --green: #6fae7f;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'IBM Plex Sans JP', 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px) 0 0/28px 100%,
+      var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    padding: 0 0 80px;
+  }
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  header.hero{
+    padding: 56px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+  .eyebrow{
+    font-family: var(--font-mono);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-size: 12px;
+    color: var(--teal);
+    margin: 0 0 10px;
+  }
+  h1{
+    font-family: var(--font-display);
+    font-size: 34px;
+    font-weight: 700;
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+  }
+  header.hero p{
+    color: var(--text-dim);
+    max-width: 640px;
+    margin: 0;
+    font-size: 15px;
+  }
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .panel h2{
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .panel h2 .idx{
+    font-family: var(--font-mono);
+    color: var(--gold);
+    font-size: 13px;
+  }
+  .panel .sub{
+    color: var(--text-faint);
+    font-size: 13px;
+    margin: 0 0 18px;
+  }
+  table.holdings{
+    width:100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  table.holdings th{
+    text-align:left;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    padding: 0 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.holdings td{
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(42,53,66,0.5);
+  }
+  table.holdings input{
+    width: 100%;
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+  table.holdings input:focus{
+    outline: none;
+    border-color: var(--teal);
+  }
+  .div-col{ display:none; }
+  .div-col.show{ display:table-cell; }
+  .row-remove{
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-faint);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .row-remove:hover{ color: var(--rose); border-color: var(--rose); }
+  .add-row-btn{
+    margin-top: 14px;
+    background: var(--panel-alt);
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .add-row-btn:hover{ border-color: var(--teal); color: var(--teal); }
+
+  .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .field{ display:flex; flex-direction:column; gap:6px; }
+  .field label{ font-size: 12px; color: var(--text-dim); }
+  .field select, .field input[type=date], .field input[type=number]{
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+  .field select:focus, .field input:focus{ outline:none; border-color: var(--teal); }
+  .toggle-row{
+    display:flex; align-items:center; gap:10px;
+    margin-top: 4px;
+  }
+  .toggle-row input[type=checkbox]{ width:16px; height:16px; accent-color: var(--teal); }
+  .hint{ font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+  #customPeriodBox{ display:none; margin-top: 16px; }
+
+  .run-btn{
+    width:100%;
+    background: linear-gradient(135deg, var(--gold), #b98c46);
+    color: #16110a;
+    border: none;
+    border-radius: 8px;
+    padding: 16px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+  }
+  .run-btn:hover{ filter: brightness(1.06); }
+  .run-btn:disabled{ opacity: 0.5; cursor: not-allowed; }
+
+  #status{
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-top: 14px;
+    white-space: pre-wrap;
+    line-height: 1.8;
+  }
+  #status .err{ color: var(--rose); }
+  #status .ok{ color: var(--green); }
+  #status .warn{ color: var(--gold); }
+
+  .manual-csv{
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--rose);
+    border-radius: 8px;
+    background: rgba(209,104,94,0.06);
+  }
+  .manual-csv textarea{
+    width:100%; min-height: 90px;
+    background: var(--panel-alt);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+  }
+
+  #results{ display:none; }
+  .cards{ display:grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+  .card{
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card .label{ font-size:11px; color: var(--text-faint); font-family: var(--font-mono); text-transform:uppercase; letter-spacing:0.06em;}
+  .card .value{ font-family: var(--font-display); font-size: 22px; font-weight:700; margin-top:6px; }
+  .card .value.gold{ color: var(--gold); }
+  .card .value.teal{ color: var(--teal); }
+  .card .value.green{ color: var(--green); }
+  .card .value.rose{ color: var(--rose); }
+
+  .chart-wrap{ position:relative; height: 440px; margin-bottom: 24px; }
+
+  table.stats{ width:100%; border-collapse:collapse; font-size: 13.5px; }
+  table.stats th{
+    text-align:left; font-family: var(--font-mono); font-weight:500; font-size:11px;
+    text-transform:uppercase; letter-spacing:0.06em; color: var(--text-faint);
+    padding: 8px; border-bottom: 1px solid var(--border);
+  }
+  table.stats td{ padding: 8px; border-bottom: 1px solid rgba(42,53,66,0.4); font-family: var(--font-mono); }
+  table.stats td.tk{ font-family: var(--font-body); font-weight:600; }
+
+  .legend-row{ display:flex; gap:20px; flex-wrap:wrap; margin: -8px 0 18px; font-size:12px; color: var(--text-dim); font-family: var(--font-mono);}
+  .legend-row span{ display:inline-flex; align-items:center; gap:6px; }
+  .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; }
+
+  .notes{ font-size: 12.5px; color: var(--text-faint); border-top: 1px solid var(--border); padding-top:16px; margin-top:8px; }
+  .notes li{ margin-bottom:6px; }
+
+  @media (max-width: 720px){
+    .cards{ grid-template-columns: repeat(2,1fr); }
+    .grid2{ grid-template-columns: 1fr; }
+    h1{ font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">RISK / RETURN &nbsp;·&nbsp; MEAN-VARIANCE FRONTIER</p>
+    <h1>ポートフォリオ効率的フロンティア分析</h1>
+    <p>保有銘柄と時価を入力し、期間・配当再投資の有無を指定すると、株価データを自動取得してポートフォリオのリスク・リターンを算出し、モンテカルロ・シミュレーションによる効率的フロンティアを描画します。</p>
+  </header>
+
+  <section class="panel">
+    <h2><span class="idx">01</span> 保有銘柄</h2>
+    <p class="sub">銘柄コードは米国株「aapl.us」、日本株「7203」または「7203.jp」の形式で入力してください（stooq.com のコードに準拠）。通貨は銘柄コードから自動判定されますが、手動で変更もできます。米国株はドル建てのまま入力してください（為替は内部で自動換算します）。株数は必須、取得金額・時価は任意です（時価を空欄にすると、株数×直近終値で自動計算します）。</p>
+    <table class="holdings" id="holdingsTable">
+      <thead>
+        <tr>
+          <th style="width:18%">銘柄コード</th>
+          <th style="width:10%">通貨</th>
+          <th style="width:16%">取得金額（任意）</th>
+          <th style="width:14%">株数</th>
+          <th style="width:18%">時価（任意）</th>
+          <th class="div-col" style="width:16%">年間配当利回り(%)</th>
+          <th style="width:40px"></th>
+        </tr>
+      </thead>
+      <tbody id="holdingsBody"></tbody>
+    </table>
+    <button class="add-row-btn" id="addRowBtn" type="button">+ 銘柄を追加</button>
+    <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+      <button class="add-row-btn" id="downloadTemplateBtn" type="button">⬇ CSVテンプレートをダウンロード</button>
+      <label for="csvUploadInput" class="add-row-btn" style="cursor:pointer;">⬆ CSVをアップロード</label>
+      <input type="file" id="csvUploadInput" accept=".csv,text/csv" style="display:none;">
+    </div>
+    <p class="hint" id="csvUploadStatus" style="margin-top:8px;"></p>
+  </section>
+
+  <section class="panel">
+    <h2><span class="idx">02</span> 期間・分析条件</h2>
+    <div class="grid2">
+      <div class="field">
+        <label>分析期間・頻度</label>
+        <select id="periodPreset">
+          <option value="1y_d">1年・日次</option>
+          <option value="2y_w">2年・週次</option>
+          <option value="5y_m" selected>5年・月次</option>
+          <option value="custom">カスタム</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>無リスク金利（年率 %・シャープレシオ計算用）</label>
+        <input type="number" id="riskFreeRate" value="0" step="0.1">
+      </div>
+      <div class="field">
+        <label>USD/JPY為替レート（空欄なら自動取得）</label>
+        <input type="number" id="fxRateOverride" placeholder="例: 155.00" step="0.01">
+        <p class="hint" style="margin-top:2px;">ドル建て銘柄がある場合のみ使用します。空欄の場合は stooq.com から直近レートを自動取得します。</p>
+      </div>
+    </div>
+
+    <div id="customPeriodBox" class="grid2">
+      <div class="field">
+        <label>開始日</label>
+        <input type="date" id="customStart">
+      </div>
+      <div class="field">
+        <label>終了日</label>
+        <input type="date" id="customEnd">
+      </div>
+      <div class="field">
+        <label>頻度</label>
+        <select id="customFreq">
+          <option value="d">日次</option>
+          <option value="w">週次</option>
+          <option value="m">月次</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="toggle-row">
+      <input type="checkbox" id="divToggle">
+      <label for="divToggle" style="font-size:13px;">配当再投資を考慮する（近似計算）</label>
+    </div>
+    <p class="hint">株価データのみでは配当額を正確に取得できないため、銘柄ごとに想定年間配当利回りを入力し、各期間のリターンに按分して加算する近似方式です（下記Wisesheets APIキーを設定した米国株は、配当調整後終値ベースで正確に計算されます）。無配・不明な場合は 0 のままで構いません。</p>
+
+    <div class="field" style="margin-top:16px;">
+      <label>Wisesheets APIキー（任意・米国株の取得に使用）</label>
+      <input type="text" id="wisesheetsApiKey" placeholder="wsh_live_...">
+      <p class="hint">お持ちの場合、<a href="https://www.wisesheets.io/dashboard?tab=api-keys" target="_blank" rel="noopener" style="color:var(--teal);">Wisesheetsダッシュボード</a>からAPIキーを取得して入力してください。米国株（.us）はこちらを優先的に使用し、配当込みリターンも正確に計算されます。現時点で日本株など米国以外の銘柄には対応していません（対応銘柄が無い場合や未入力の場合はstooq経由の取得にフォールバックします）。個人利用ライセンスのため、業務・法人・顧客資金の運用目的での利用はご注意ください。</p>
+    </div>
+  </section>
+
+  <button class="run-btn" id="runBtn" type="button">分析を実行</button>
+  <div id="status"></div>
+
+  <section id="results" class="panel">
+    <h2><span class="idx">03</span> 結果</h2>
+    <div class="cards" id="summaryCards"></div>
+
+    <div class="legend-row">
+      <span><i class="dot" style="background:#3a4656"></i>モンテカルロ・シミュレーション（空売りなし）</span>
+      <span><i class="dot" style="background:var(--teal)"></i>効率的フロンティア（近似）</span>
+      <span><i class="dot" style="background:#8fa8c9"></i>個別銘柄</span>
+      <span><i class="dot" style="background:var(--gold)"></i>現在のポートフォリオ</span>
+      <span><i class="dot" style="background:var(--green)"></i>最小分散ポートフォリオ</span>
+      <span><i class="dot" style="background:var(--rose)"></i>最大シャープ・ポートフォリオ</span>
+    </div>
+    <div class="chart-wrap"><canvas id="frontierChart"></canvas></div>
+
+    <table class="stats" id="statsTable">
+      <thead>
+        <tr><th>銘柄</th><th>データ元</th><th>時価</th><th>ウェイト</th><th>年率リターン</th><th>年率リスク</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="notes">
+      <ul id="notesList"></ul>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ===================== Utility: symbol normalization ===================== */
+function normalizeSymbol(raw) {
+  let s = (raw || '').trim().toLowerCase();
+  if (!s) return '';
+  if (s.includes('.')) return s;
+  if (/^\d{4}$/.test(s)) return s + '.jp';
+  return s + '.us';
+}
+
+/* ===================== Period parameters ===================== */
+function pad2(n) { return String(n).padStart(2, '0'); }
+function toStooqDate(d) {
+  return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate());
+}
+function computePeriodParams(preset, customStart, customEnd, customFreq) {
+  const today = new Date();
+  let interval, d1date, d2date = today, periodsPerYear, label, wsLastNDays = null;
+  if (preset === '1y_d') {
+    interval = 'd'; periodsPerYear = 252; label = '1年・日次'; wsLastNDays = 252;
+    d1date = new Date(today); d1date.setFullYear(d1date.getFullYear() - 1);
+  } else if (preset === '2y_w') {
+    interval = 'w'; periodsPerYear = 52; label = '2年・週次'; wsLastNDays = 504;
+    d1date = new Date(today); d1date.setFullYear(d1date.getFullYear() - 2);
+  } else if (preset === '5y_m') {
+    interval = 'm'; periodsPerYear = 12; label = '5年・月次'; wsLastNDays = 1225; // ~4.9y, margin under a 5y plan cap
+    d1date = new Date(today); d1date.setFullYear(d1date.getFullYear() - 5);
+  } else {
+    interval = customFreq;
+    periodsPerYear = customFreq === 'd' ? 252 : (customFreq === 'w' ? 52 : 12);
+    d1date = new Date(customStart);
+    d2date = new Date(customEnd);
+    label = 'カスタム';
+  }
+  return { interval, d1: toStooqDate(d1date), d2: toStooqDate(d2date), periodsPerYear, label, wsLastNDays };
+}
+
+/* Build a Wisesheets `period` selector. Prefer lastNd (relative, no end date) to
+   avoid the API's "future dates are rejected" rule; only custom ranges use an
+   explicit date range, with the end date clamped to yesterday just in case. */
+function isoDateFromDate(d) {
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+function buildWisesheetsPeriod(params) {
+  if (params.wsLastNDays) return 'last' + params.wsLastNDays + 'd';
+  const d1Iso = stooqDateToIso(params.d1);
+  let d2Date = new Date(stooqDateToIso(params.d2));
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+  if (d2Date > yesterday) d2Date = yesterday;
+  return d1Iso + '..' + isoDateFromDate(d2Date);
+}
+
+function buildStooqUrl(symbol, interval, d1, d2) {
+  return 'https://stooq.com/q/d/l/?s=' + encodeURIComponent(symbol) +
+    '&i=' + interval + '&d1=' + d1 + '&d2=' + d2;
+}
+
+/* ===================== Fetch with fallback ===================== */
+async function fetchTextWithFallback(url) {
+  const attempts = [
+    url,
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+    'https://corsproxy.io/?url=' + encodeURIComponent(url)
+  ];
+  let lastErr = null;
+  for (const attemptUrl of attempts) {
+    try {
+      const res = await fetch(attemptUrl, { cache: 'no-store' });
+      if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
+      const text = await res.text();
+      if (!text || text.length < 10 || /^\s*<!DOCTYPE/i.test(text)) {
+        lastErr = new Error('unexpected response body');
+        continue;
+      }
+      return text;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('fetch failed');
+}
+
+/* ===================== FX rate ===================== */
+async function fetchUsdJpyRate() {
+  const today = new Date();
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 10);
+  const url = buildStooqUrl('usdjpy', 'd', toStooqDate(weekAgo), toStooqDate(today));
+  const text = await fetchTextWithFallback(url);
+  const series = parseStooqCsv(text);
+  if (series.length === 0) throw new Error('為替レートを取得できませんでした');
+  const last = series[series.length - 1];
+  return { rate: last.close, date: last.date };
+}
+
+/* ===================== CSV parsing ===================== */
+function parseStooqCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const out = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    if (cols.length < 5) continue;
+    const date = cols[0];
+    const close = parseFloat(cols[4]);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(close)) continue;
+    out.push({ date, close });
+  }
+  out.sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+  return out;
+}
+
+/* ===================== Alignment (close + adjClose) ===================== */
+function alignSeries(seriesByTicker, tickers) {
+  let dateSets = tickers.map(t => new Set(seriesByTicker[t].map(r => r.date)));
+  let commonDates = [...dateSets[0]].filter(d => dateSets.every(s => s.has(d)));
+  commonDates.sort();
+  const closeMatrix = [], adjMatrix = [];
+  for (const date of commonDates) {
+    const crow = [], arow = [];
+    for (const t of tickers) {
+      const row = seriesByTicker[t].find(r => r.date === date);
+      crow.push(row ? row.close : null);
+      arow.push(row ? row.adjClose : null);
+    }
+    closeMatrix.push(crow); adjMatrix.push(arow);
+  }
+  return { dates: commonDates, closeMatrix, adjMatrix };
+}
+
+/* ===================== Returns & stats ===================== */
+function pricesToReturns(priceMatrix) {
+  const T = priceMatrix.length;
+  const n = priceMatrix[0].length;
+  const returns = [];
+  for (let t = 1; t < T; t++) {
+    const row = [];
+    for (let j = 0; j < n; j++) {
+      const p0 = priceMatrix[t - 1][j], p1 = priceMatrix[t][j];
+      row.push((p1 - p0) / p0);
+    }
+    returns.push(row);
+  }
+  return returns;
+}
+
+/* Combine close-based and adjClose-based returns per holding:
+   - Wisesheets-sourced holdings get true dividend-adjusted (adjClose) returns when divOn.
+   - Other holdings fall back to close returns + an approximate per-period yield add-on. */
+function buildFinalReturns(closeReturns, adjReturns, validHoldings, divOn, periodsPerYear) {
+  const T = closeReturns.length, n = validHoldings.length;
+  const final = [];
+  for (let t = 0; t < T; t++) {
+    const row = [];
+    for (let j = 0; j < n; j++) {
+      const h = validHoldings[j];
+      if (divOn && h.source === 'wisesheets') {
+        row.push(adjReturns[t][j]);
+      } else if (divOn && h.divY) {
+        row.push(closeReturns[t][j] + (h.divY / 100) / periodsPerYear);
+      } else {
+        row.push(closeReturns[t][j]);
+      }
+    }
+    final.push(row);
+  }
+  return final;
+}
+
+/* ===================== Wisesheets (US stocks, official API) ===================== */
+function symbolToWisesheets(sym) {
+  return sym.endsWith('.us') ? sym.slice(0, -3).toUpperCase() : null;
+}
+function stooqDateToIso(d) {
+  return d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8);
+}
+function groupWisesheetsRows(rows, wsSymToOurSym) {
+  const out = {};
+  for (const row of rows) {
+    const ourSym = wsSymToOurSym[row.symbol];
+    if (!ourSym) continue;
+    const close = parseFloat(row.close);
+    if (isNaN(close)) continue;
+    const adjClose = row.adjClose != null ? parseFloat(row.adjClose) : close;
+    if (!out[ourSym]) out[ourSym] = [];
+    out[ourSym].push({ date: row.date, close, adjClose: isNaN(adjClose) ? close : adjClose });
+  }
+  for (const k in out) out[k].sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+  return out;
+}
+async function fetchWisesheetsEodAll(wsSymbols, period, apiKey) {
+  const allRows = [];
+  const CHUNK = 5; // keep rows-per-request well under the 10,000 row cap (e.g. 5 tickers * ~1225 days)
+  for (let i = 0; i < wsSymbols.length; i += CHUNK) {
+    const chunk = wsSymbols.slice(i, i + CHUNK);
+    let cursor = null;
+    do {
+      let url = 'https://api.wisesheets.io/v1/prices/eod?tickers=' + encodeURIComponent(chunk.join(',')) +
+        '&period=' + encodeURIComponent(period) + '&fields=close,adjClose&limit=10000';
+      if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
+      const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + apiKey } });
+      if (!res.ok) {
+        let bodyText = '';
+        try { bodyText = await res.text(); } catch (e2) { /* ignore */ }
+        throw new Error('Wisesheets HTTP ' + res.status + (bodyText ? ' - ' + bodyText.slice(0, 400) : ''));
+      }
+      const json = await res.json();
+      if (Array.isArray(json.data)) allRows.push(...json.data);
+      cursor = json.meta && json.meta.nextCursor ? json.meta.nextCursor : null;
+    } while (cursor);
+  }
+  return { rows: allRows };
+}
+
+
+function meanVector(returns) {
+  const T = returns.length, n = returns[0].length;
+  const mu = new Array(n).fill(0);
+  for (let t = 0; t < T; t++) for (let j = 0; j < n; j++) mu[j] += returns[t][j];
+  for (let j = 0; j < n; j++) mu[j] /= T;
+  return mu;
+}
+
+function covMatrix(returns, mu) {
+  const T = returns.length, n = returns[0].length;
+  const cov = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let t = 0; t < T; t++) {
+    for (let i = 0; i < n; i++) {
+      const di = returns[t][i] - mu[i];
+      for (let j = 0; j < n; j++) {
+        cov[i][j] += di * (returns[t][j] - mu[j]);
+      }
+    }
+  }
+  const denom = Math.max(T - 1, 1);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) cov[i][j] /= denom;
+  return cov;
+}
+
+function annualizeStats(muPeriod, covPeriod, periodsPerYear) {
+  const muA = muPeriod.map(m => m * periodsPerYear);
+  const covA = covPeriod.map(row => row.map(v => v * periodsPerYear));
+  return { muA, covA };
+}
+
+/* ===================== Portfolio math ===================== */
+function portfolioMu(w, mu) {
+  let s = 0; for (let i = 0; i < w.length; i++) s += w[i] * mu[i]; return s;
+}
+function portfolioSigma(w, cov) {
+  let s = 0; const n = w.length;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) s += w[i] * w[j] * cov[i][j];
+  return Math.sqrt(Math.max(s, 0));
+}
+
+/* ===================== Monte Carlo ===================== */
+function randomSimplexWeights(n) {
+  const raw = new Array(n).fill(0).map(() => -Math.log(Math.random() + 1e-12));
+  const sum = raw.reduce((a, b) => a + b, 0);
+  return raw.map(v => v / sum);
+}
+
+function monteCarloFrontier(muA, covA, rf, count) {
+  const n = muA.length;
+  const points = [];
+  for (let k = 0; k < count; k++) {
+    const w = randomSimplexWeights(n);
+    const mu = portfolioMu(w, muA);
+    const sigma = portfolioSigma(w, covA);
+    const sharpe = sigma > 0 ? (mu - rf) / sigma : 0;
+    points.push({ w, mu, sigma, sharpe });
+  }
+  return points;
+}
+
+function buildFrontierEnvelope(points, bins) {
+  if (points.length === 0) return [];
+  let minS = Math.min(...points.map(p => p.sigma));
+  let maxS = Math.max(...points.map(p => p.sigma));
+  if (maxS <= minS) return [];
+  const binWidth = (maxS - minS) / bins;
+  const binMax = new Array(bins).fill(null);
+  for (const p of points) {
+    let idx = Math.floor((p.sigma - minS) / binWidth);
+    if (idx >= bins) idx = bins - 1;
+    if (idx < 0) idx = 0;
+    if (binMax[idx] === null || p.mu > binMax[idx]) binMax[idx] = p.mu;
+  }
+  let last = null;
+  for (let i = 0; i < bins; i++) {
+    if (binMax[i] === null) binMax[i] = last;
+    else last = binMax[i];
+  }
+  let runningMax = -Infinity;
+  const envelope = [];
+  for (let i = 0; i < bins; i++) {
+    if (binMax[i] === null) continue;
+    runningMax = Math.max(runningMax, binMax[i]);
+    envelope.push({ sigma: minS + (i + 0.5) * binWidth, mu: runningMax });
+  }
+  return envelope;
+}
+
+/* ===================== UI wiring ===================== */
+let rowCounter = 0;
+function detectDefaultCurrency(rawTicker) {
+  const sym = normalizeSymbol(rawTicker);
+  return sym.endsWith('.us') ? 'USD' : 'JPY';
+}
+function addHoldingRow(ticker, ccy, acq, qty, mv, divY) {
+  rowCounter++;
+  const id = 'row' + rowCounter;
+  const tr = document.createElement('tr');
+  tr.id = id;
+  const initCcy = ccy || (ticker ? detectDefaultCurrency(ticker) : 'JPY');
+  const numOrBlank = (v) => (v == null || isNaN(v)) ? '' : v;
+  tr.innerHTML =
+    '<td><input type="text" class="f-ticker" placeholder="例: aapl.us / 7203" value="' + (ticker||'') + '"></td>' +
+    '<td><select class="f-ccy">' +
+      '<option value="JPY"' + (initCcy==='JPY'?' selected':'') + '>JPY</option>' +
+      '<option value="USD"' + (initCcy==='USD'?' selected':'') + '>USD</option>' +
+    '</select></td>' +
+    '<td><input type="number" class="f-acq" placeholder="任意" value="' + numOrBlank(acq) + '"></td>' +
+    '<td><input type="number" class="f-qty" placeholder="必須" value="' + numOrBlank(qty) + '"></td>' +
+    '<td><input type="number" class="f-mv" placeholder="空欄で自動計算" value="' + numOrBlank(mv) + '"></td>' +
+    '<td class="div-col"><input type="number" class="f-div" placeholder="0" value="' + (v => isNaN(v) ? 0 : v)(divY) + '"></td>' +
+    '<td><button type="button" class="row-remove" onclick="document.getElementById(\'' + id + '\').remove()">×</button></td>';
+  document.getElementById('holdingsBody').appendChild(tr);
+  tr.querySelector('.f-ticker').addEventListener('input', (e) => {
+    tr.querySelector('.f-ccy').value = detectDefaultCurrency(e.target.value);
+  });
+}
+
+function readHoldings() {
+  const rows = [...document.querySelectorAll('#holdingsBody tr')];
+  return rows.map(tr => ({
+    ticker: tr.querySelector('.f-ticker').value.trim(),
+    ccy: tr.querySelector('.f-ccy').value,
+    acq: parseFloat(tr.querySelector('.f-acq').value),
+    qty: parseFloat(tr.querySelector('.f-qty').value),
+    mv: parseFloat(tr.querySelector('.f-mv').value),
+    divY: parseFloat(tr.querySelector('.f-div').value) || 0
+  })).filter(h => h.ticker && !isNaN(h.qty) && h.qty > 0);
+}
+
+document.getElementById('addRowBtn').addEventListener('click', () => addHoldingRow());
+for (let i = 0; i < 3; i++) addHoldingRow();
+
+/* ===================== Holdings CSV template / upload ===================== */
+const HOLDINGS_CSV_HEADER = ['銘柄コード', '通貨(JPY/USD)', '取得金額(任意)', '株数', '時価(任意)', '年間配当利回り%(任意)'];
+const HOLDINGS_CSV_COLUMN_ALIASES = {
+  ticker: ['銘柄コード', 'ticker', 'symbol', '銘柄'],
+  ccy: ['通貨(jpy/usd)', '通貨', 'ccy', 'currency'],
+  acq: ['取得金額(任意)', '取得金額', 'acq', '取得価額', 'cost'],
+  qty: ['株数', 'qty', 'shares', '数量'],
+  mv: ['時価(任意)', '時価', 'mv', 'market_value', '評価額'],
+  divY: ['年間配当利回り%(任意)', '年間配当利回り', '配当利回り', 'divy', 'dividend_yield']
+};
+
+function downloadTemplateCsv() {
+  const rows = [
+    HOLDINGS_CSV_HEADER,
+    ['aapl.us', 'USD', '1500', '10', '', '0.5'],
+    ['7203', 'JPY', '', '100', '', '3.0']
+  ];
+  const csvText = rows.map(r => r.map(v => (/[,"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v)).join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csvText], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'portfolio_holdings_template.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('downloadTemplateBtn').addEventListener('click', downloadTemplateCsv);
+
+/* Minimal RFC4180-ish CSV parser: handles quoted fields with embedded commas/quotes/newlines. */
+function parseCsvGeneric(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.some(x => x !== '')) rows.push(row);
+        row = [];
+      } else field += c;
+    }
+  }
+  if (field !== '' || row.length > 0) { row.push(field); if (row.some(x => x !== '')) rows.push(row); }
+  return rows;
+}
+
+function csvRowsToHoldings(rows) {
+  if (rows.length === 0) return [];
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const colIndex = {};
+  for (const key in HOLDINGS_CSV_COLUMN_ALIASES) {
+    const aliases = HOLDINGS_CSV_COLUMN_ALIASES[key].map(a => a.toLowerCase());
+    const idx = header.findIndex(h => aliases.includes(h));
+    colIndex[key] = idx;
+  }
+  if (colIndex.ticker === -1 || colIndex.qty === -1) {
+    throw new Error('「銘柄コード」と「株数」の列が見つかりません。テンプレートの見出し行を確認してください。');
+  }
+  const num = (v) => v == null ? NaN : parseFloat(String(v).replace(/,/g, ''));
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const ticker = colIndex.ticker >= 0 ? (r[colIndex.ticker] || '').trim() : '';
+    if (!ticker) continue;
+    out.push({
+      ticker,
+      ccy: colIndex.ccy >= 0 && r[colIndex.ccy] ? r[colIndex.ccy].trim().toUpperCase() : null,
+      acq: colIndex.acq >= 0 ? num(r[colIndex.acq]) : NaN,
+      qty: colIndex.qty >= 0 ? num(r[colIndex.qty]) : NaN,
+      mv: colIndex.mv >= 0 ? num(r[colIndex.mv]) : NaN,
+      divY: colIndex.divY >= 0 ? num(r[colIndex.divY]) : 0
+    });
+  }
+  return out;
+}
+
+document.getElementById('csvUploadInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const statusEl2 = document.getElementById('csvUploadStatus');
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const rows = parseCsvGeneric(reader.result);
+      const parsedHoldings = csvRowsToHoldings(rows);
+      if (parsedHoldings.length === 0) throw new Error('有効な行が見つかりませんでした。');
+      document.getElementById('holdingsBody').innerHTML = '';
+      parsedHoldings.forEach(h => addHoldingRow(h.ticker, h.ccy, h.acq, h.qty, h.mv, h.divY));
+      statusEl2.textContent = parsedHoldings.length + '件の銘柄をCSVから読み込みました。';
+      statusEl2.style.color = 'var(--green)';
+    } catch (err) {
+      statusEl2.textContent = 'CSVの読み込みに失敗しました: ' + err.message;
+      statusEl2.style.color = 'var(--rose)';
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+  e.target.value = '';
+});
+
+document.getElementById('periodPreset').addEventListener('change', (e) => {
+  document.getElementById('customPeriodBox').style.display = e.target.value === 'custom' ? 'grid' : 'none';
+});
+
+document.getElementById('divToggle').addEventListener('change', (e) => {
+  document.querySelectorAll('.div-col').forEach(el => el.classList.toggle('show', e.target.checked));
+});
+
+const statusEl = document.getElementById('status');
+function log(msg, cls) {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  statusEl.appendChild(line);
+}
+function clearLog() { statusEl.innerHTML = ''; }
+
+let chartInstance = null;
+// Manually-pasted CSV/JSON data persists here across re-runs (runAnalysis() creates
+// fresh local objects each call, so without this cache, manual entries would be lost
+// the moment the user clicks "分析を実行" again).
+const manualDataCache = {}; // sym -> { series: [{date,close,adjClose}], source: 'manual' | 'wisesheets' }
+
+document.getElementById('runBtn').addEventListener('click', runAnalysis);
+
+async function runAnalysis() {
+  clearLog();
+  document.getElementById('results').style.display = 'none';
+  const holdings = readHoldings();
+  if (holdings.length === 0) {
+    log('銘柄コードと株数を少なくとも1件入力してください。', 'err');
+    return;
+  }
+  const runBtn = document.getElementById('runBtn');
+  runBtn.disabled = true;
+  runBtn.textContent = '分析中…';
+
+  const preset = document.getElementById('periodPreset').value;
+  const customStart = document.getElementById('customStart').value;
+  const customEnd = document.getElementById('customEnd').value;
+  const customFreq = document.getElementById('customFreq').value;
+  const divOn = document.getElementById('divToggle').checked;
+  const rfAnnual = (parseFloat(document.getElementById('riskFreeRate').value) || 0) / 100;
+
+  if (preset === 'custom' && (!customStart || !customEnd)) {
+    log('カスタム期間の開始日・終了日を指定してください。', 'err');
+    runBtn.disabled = false; runBtn.textContent = '分析を実行';
+    return;
+  }
+
+  const params = computePeriodParams(preset, customStart, customEnd, customFreq);
+  log('期間設定: ' + params.label + '（' + params.d1 + ' 〜 ' + params.d2 + '）');
+
+  let fxRate = null, fxDate = null;
+  const needsFx = holdings.some(h => h.ccy === 'USD');
+  if (needsFx) {
+    const override = parseFloat(document.getElementById('fxRateOverride').value);
+    if (!isNaN(override) && override > 0) {
+      fxRate = override;
+      log('USD/JPY為替レート: 1USD = ' + fxRate.toFixed(2) + '円（手動入力）', 'ok');
+    } else {
+      log('USD/JPY為替レートを取得中…');
+      try {
+        const fx = await fetchUsdJpyRate();
+        fxRate = fx.rate; fxDate = fx.date;
+        log('  ✓ 1USD = ' + fxRate.toFixed(2) + '円（' + fxDate + '時点、stooq.com）', 'ok');
+      } catch (e) {
+        log('  ✗ 為替レートの自動取得に失敗しました。「USD/JPY為替レート」欄に手動でレートを入力し、再度実行してください。', 'err');
+        runBtn.disabled = false; runBtn.textContent = '分析を実行';
+        return;
+      }
+    }
+  }
+
+  const wisesheetsApiKey = document.getElementById('wisesheetsApiKey').value.trim();
+  const rateFor = (ccy) => ccy === 'USD' ? fxRate : 1;
+
+  // If 時価 is left blank, use qty × latest available close (the last row of
+  // whichever price series we fetched) as the market value, in the holding's
+  // own currency, then convert to JPY as usual.
+  function commitHolding(h, sym, series, source) {
+    const lastRow = series[series.length - 1];
+    let mv = h.mv, mvAuto = false;
+    if (isNaN(mv) || mv <= 0) {
+      mv = h.qty * lastRow.close;
+      mvAuto = true;
+    }
+    return {
+      ...h, sym, source, mv, mvAuto, mvAsOfDate: lastRow.date,
+      mvJPY: mv * rateFor(h.ccy),
+      acqJPY: isNaN(h.acq) ? NaN : h.acq * rateFor(h.ccy)
+    };
+  }
+
+  const seriesByTicker = {};
+  const validHoldings = [];
+  const wsCandidates = [];
+  const restHoldings = [];
+  for (const h of holdings) {
+    const sym = normalizeSymbol(h.ticker);
+    if (manualDataCache[sym]) {
+      seriesByTicker[sym] = manualDataCache[sym].series;
+      validHoldings.push(commitHolding(h, sym, manualDataCache[sym].series, manualDataCache[sym].source));
+      log(h.ticker + ' → ' + sym + ': 以前貼り付けたデータを使用します（' + manualDataCache[sym].series.length + '件）', 'ok');
+      continue;
+    }
+    const wsSym = wisesheetsApiKey ? symbolToWisesheets(sym) : null;
+    if (wsSym) wsCandidates.push({ h, sym, wsSym });
+    else restHoldings.push({ h, sym });
+  }
+
+  if (wsCandidates.length > 0) {
+    log('Wisesheetsから米国株データを取得中…（' + wsCandidates.length + '銘柄）');
+    try {
+      const wsPeriod = buildWisesheetsPeriod(params);
+      const wsSymToOurSym = {};
+      wsCandidates.forEach(c => { wsSymToOurSym[c.wsSym] = c.sym; });
+      const { rows } = await fetchWisesheetsEodAll(wsCandidates.map(c => c.wsSym), wsPeriod, wisesheetsApiKey);
+      const grouped = groupWisesheetsRows(rows, wsSymToOurSym);
+      for (const c of wsCandidates) {
+        const series = grouped[c.sym];
+        if (series && series.length >= 5) {
+          seriesByTicker[c.sym] = series;
+          validHoldings.push(commitHolding(c.h, c.sym, series, 'wisesheets'));
+          log('  ✓ ' + c.h.ticker + '（' + c.wsSym + '）: Wisesheetsから' + series.length + '件取得', 'ok');
+        } else {
+          log('  ✗ ' + c.h.ticker + '（' + c.wsSym + '）: Wisesheetsにデータがありません。stooq経由にフォールバックします。', 'warn');
+          restHoldings.push({ h: c.h, sym: c.sym });
+        }
+      }
+    } catch (e) {
+      log('  ✗ Wisesheets APIの呼び出しに失敗しました（' + (e.message || e) + '）。', 'err');
+      showManualWisesheetsBox(wsCandidates, params, wisesheetsApiKey);
+      log('  → 上記が解決するまでの間、対象銘柄はstooq経由の取得も試みます。', 'warn');
+      wsCandidates.forEach(c => restHoldings.push({ h: c.h, sym: c.sym }));
+    }
+  }
+
+  for (const { h, sym } of restHoldings) {
+    log(h.ticker + ' → ' + sym + ' のデータを取得中…');
+    try {
+      const url = buildStooqUrl(sym, params.interval, params.d1, params.d2);
+      const text = await fetchTextWithFallback(url);
+      const rawSeries = parseStooqCsv(text);
+      if (rawSeries.length < 5) throw new Error('データ点数が不足しています');
+      seriesByTicker[sym] = rawSeries.map(r => ({ date: r.date, close: r.close, adjClose: r.close }));
+      validHoldings.push(commitHolding(h, sym, seriesByTicker[sym], 'stooq'));
+      log('  ✓ ' + rawSeries.length + '件取得', 'ok');
+    } catch (e) {
+      log('  ✗ 自動取得に失敗しました（' + (e.message || e) + '）。下の欄にCSVを貼り付けてください。', 'err');
+      showManualCsvBox(h.ticker, sym, params);
+    }
+  }
+
+  if (validHoldings.length === 0) {
+    log('有効なデータを取得できた銘柄がありません。CSVを手動貼り付けするか、期間を変更して再実行してください。', 'err');
+    runBtn.disabled = false; runBtn.textContent = '分析を実行';
+    return;
+  }
+
+  const tickers = validHoldings.map(h => h.sym);
+  const { dates, closeMatrix, adjMatrix } = alignSeries(seriesByTicker, tickers);
+  if (dates.length < 5) {
+    log('銘柄間で共通する取引日が少なすぎます（' + dates.length + '件）。期間や銘柄を見直してください。', 'err');
+    runBtn.disabled = false; runBtn.textContent = '分析を実行';
+    return;
+  }
+  log('共通データ点数: ' + dates.length + '件（' + dates[0] + ' 〜 ' + dates[dates.length-1] + '）', 'ok');
+
+  const closeReturns = pricesToReturns(closeMatrix);
+  const adjReturns = pricesToReturns(adjMatrix);
+  const returns = buildFinalReturns(closeReturns, adjReturns, validHoldings, divOn, params.periodsPerYear);
+  if (divOn) {
+    const wsCount = validHoldings.filter(h => h.source === 'wisesheets').length;
+    log('配当再投資を反映しました（Wisesheets取得の' + wsCount + '銘柄は配当調整後終値ベース、その他は近似加算）。', 'warn');
+  }
+
+
+  const muPeriod = meanVector(returns);
+  const covPeriod = covMatrix(returns, muPeriod);
+  const { muA, covA } = annualizeStats(muPeriod, covPeriod, params.periodsPerYear);
+
+  const totalMV = validHoldings.reduce((s, h) => s + h.mvJPY, 0);
+  const w = validHoldings.map(h => h.mvJPY / totalMV);
+  const curMu = portfolioMu(w, muA);
+  const curSigma = portfolioSigma(w, covA);
+  const curSharpe = curSigma > 0 ? (curMu - rfAnnual) / curSigma : 0;
+
+  const hasAcq = validHoldings.some(h => !isNaN(h.acqJPY) && h.acqJPY > 0);
+  const totalAcq = validHoldings.reduce((s, h) => s + (isNaN(h.acqJPY) ? 0 : h.acqJPY), 0);
+  const pnl = totalMV - totalAcq;
+  const pnlPct = totalAcq > 0 ? (pnl / totalAcq) * 100 : null;
+
+  let minVol = null, maxSharpe = null, envelope = [], mcPoints = [];
+  if (validHoldings.length >= 2) {
+    mcPoints = monteCarloFrontier(muA, covA, rfAnnual, 8000);
+    minVol = mcPoints.reduce((a, b) => (b.sigma < a.sigma ? b : a));
+    maxSharpe = mcPoints.reduce((a, b) => (b.sharpe > a.sharpe ? b : a));
+    envelope = buildFrontierEnvelope(mcPoints, 50);
+  } else {
+    log('銘柄が1件のため、効率的フロンティア（分散効果）は表示されません。', 'warn');
+  }
+
+  renderResults({
+    validHoldings, w, muA, covA, curMu, curSigma, curSharpe,
+    totalMV, totalAcq, pnl, pnlPct, hasAcq,
+    mcPoints, minVol, maxSharpe, envelope, params, rfAnnual,
+    fxRate, fxDate
+  });
+
+  runBtn.disabled = false;
+  runBtn.textContent = '分析を実行';
+}
+
+function symbolToYahoo(sym) {
+  if (sym.endsWith('.us')) return sym.slice(0, -3).toUpperCase();
+  if (sym.endsWith('.jp')) return sym.slice(0, -3) + '.T';
+  return sym.toUpperCase();
+}
+function stooqDateToUnix(d) {
+  const y = +d.slice(0, 4), m = +d.slice(4, 6), day = +d.slice(6, 8);
+  return Math.floor(Date.UTC(y, m - 1, day) / 1000);
+}
+function buildYahooHistoryUrl(sym, interval, d1, d2) {
+  const yahooTicker = symbolToYahoo(sym);
+  const freq = interval === 'd' ? '1d' : (interval === 'w' ? '1wk' : '1mo');
+  const p1 = stooqDateToUnix(d1), p2 = stooqDateToUnix(d2);
+  return 'https://finance.yahoo.com/quote/' + encodeURIComponent(yahooTicker) +
+    '/history/?frequency=' + freq + '&period1=' + p1 + '&period2=' + p2;
+}
+
+function showManualCsvBox(rawTicker, sym, params) {
+  const box = document.createElement('div');
+  box.className = 'manual-csv';
+  const yahooUrl = buildYahooHistoryUrl(sym, params.interval, params.d1, params.d2);
+  const yahooTicker = symbolToYahoo(sym);
+  const stooqUrl = buildStooqUrl(sym, params.interval, params.d1, params.d2);
+  box.innerHTML =
+    '<div style="font-size:12.5px; margin-bottom:6px; color:var(--text-dim);">' +
+    rawTicker + '（' + sym + '）のCSVを貼り付け（Date,Open,High,Low,Close[,Adj Close],Volume 形式。Yahoo Finance / stooq.com のCSVをそのまま貼り付け可）</div>' +
+    '<div style="margin-bottom:4px;"><a href="' + yahooUrl + '" target="_blank" rel="noopener" style="color:var(--teal); font-size:12.5px;">→ Yahoo Financeの履歴データページを開く（ティッカー: ' + yahooTicker + '）</a></div>' +
+    '<div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">開いたページの期間・頻度が反映されていることを確認し、テーブル右上の「Download」からCSVをダウンロード（またはテーブルをそのまま選択してコピー）し、下の欄に貼り付けてください。</div>' +
+    '<div style="margin-bottom:8px;"><a href="' + stooqUrl + '" target="_blank" rel="noopener" style="color:var(--text-faint); font-size:11px;">（参考）stooq.comの直接URL — 現在apikeyが無いとaccess deniedになる場合があります</a></div>' +
+    '<textarea placeholder="Date,Open,High,Low,Close,Adj Close,Volume&#10;2024-01-04,...,...,...,150.2,...,..."></textarea>' +
+    '<button type="button" class="add-row-btn" style="margin-top:8px;">このCSVを取り込む</button>';
+  statusEl.appendChild(box);
+  box.querySelector('button').addEventListener('click', () => {
+    const text = box.querySelector('textarea').value;
+    try {
+      const rawSeries = parseStooqCsv(text);
+      if (rawSeries.length < 5) throw new Error('データ点数が不足しています');
+      manualDataCache[sym] = {
+        series: rawSeries.map(r => ({ date: r.date, close: r.close, adjClose: r.close })),
+        source: 'manual'
+      };
+      log(sym + ' を手動CSVから取り込みました（' + rawSeries.length + '件）。再度「分析を実行」を押すとこのデータが使われます。', 'ok');
+      box.remove();
+    } catch (e) {
+      log('CSVの解析に失敗しました: ' + e.message, 'err');
+    }
+  });
+}
+
+/* Manual fallback for the Wisesheets API when the browser call itself fails
+   (most likely CORS). curl runs outside the browser, so it isn't subject to
+   CORS — the user pastes the raw JSON response back in. */
+function showManualWisesheetsBox(wsCandidates, params, apiKey) {
+  const box = document.createElement('div');
+  box.className = 'manual-csv';
+  const wsPeriod = buildWisesheetsPeriod(params);
+  const wsSymbols = wsCandidates.map(c => c.wsSym);
+  const wsSymToOurSym = {};
+  wsCandidates.forEach(c => { wsSymToOurSym[c.wsSym] = c.sym; });
+  const apiUrl = 'https://api.wisesheets.io/v1/prices/eod?tickers=' + encodeURIComponent(wsSymbols.join(',')) +
+    '&period=' + encodeURIComponent(wsPeriod) + '&fields=close,adjClose&limit=10000';
+  const curlCmd = 'curl -s "' + apiUrl + '" -H "Authorization: Bearer ' + apiKey + '"';
+  box.innerHTML =
+    '<div style="font-size:12.5px; margin-bottom:6px; color:var(--text-dim);">' +
+    'Wisesheets対象銘柄（' + wsSymbols.join(', ') + '）: ターミナル等で以下のcurlコマンドを実行し、表示されたJSONをそのまま下の欄に貼り付けてください。</div>' +
+    '<textarea readonly style="min-height:50px; margin-bottom:8px; font-size:11px;">' + curlCmd + '</textarea>' +
+    '<div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">ブラウザではなくターミナル（コマンドプロンプト）等で実行してください。CORSはブラウザだけの制限のため、curlなら問題なく通ります。銘柄数が多いと10,000行の上限に達し一部データが欠ける場合があります。その際は銘柄を5件程度ずつに分けて複数回実行し、結果をまとめて貼り付けてください。</div>' +
+    '<textarea placeholder=\'{"data":[{"symbol":"AAPL","date":"2024-01-04","close":"150.2","adjClose":"149.8"}, ...], "meta": {...}}\'></textarea>' +
+    '<button type="button" class="add-row-btn" style="margin-top:8px;">このJSONを取り込む</button>';
+  statusEl.appendChild(box);
+  const buttons = box.querySelectorAll('button');
+  buttons[buttons.length - 1].addEventListener('click', () => {
+    const text = box.querySelectorAll('textarea')[1].value;
+    try {
+      const json = JSON.parse(text);
+      const rows = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+      if (rows.length === 0) throw new Error('data配列が見つかりません');
+      const grouped = groupWisesheetsRows(rows, wsSymToOurSym);
+      let count = 0;
+      for (const sym in grouped) {
+        if (grouped[sym].length >= 5) {
+          manualDataCache[sym] = { series: grouped[sym], source: 'wisesheets' };
+          count++;
+        }
+      }
+      log(count + '銘柄をWisesheetsの手動JSONから取り込みました。再度「分析を実行」を押すとこのデータが使われます。', 'ok');
+      box.remove();
+    } catch (e) {
+      log('JSONの解析に失敗しました: ' + e.message, 'err');
+    }
+  });
+}
+
+function fmtPct(x, digits) { return (x * 100).toFixed(digits != null ? digits : 2) + '%'; }
+function fmtYen(x) { return Math.round(x).toLocaleString('ja-JP') + ' 円'; }
+
+function renderResults(r) {
+  document.getElementById('results').style.display = 'block';
+
+  const cards = document.getElementById('summaryCards');
+  let cardHtml =
+    '<div class="card"><div class="label">時価総額</div><div class="value">' + fmtYen(r.totalMV) + '</div></div>' +
+    '<div class="card"><div class="label">期待リターン（年率）</div><div class="value gold">' + fmtPct(r.curMu) + '</div></div>' +
+    '<div class="card"><div class="label">リスク（年率標準偏差）</div><div class="value teal">' + fmtPct(r.curSigma) + '</div></div>' +
+    '<div class="card"><div class="label">シャープレシオ</div><div class="value">' + r.curSharpe.toFixed(2) + '</div></div>';
+  if (r.hasAcq) {
+    const cls = r.pnl >= 0 ? 'green' : 'rose';
+    cardHtml += '<div class="card"><div class="label">取得金額合計</div><div class="value">' + fmtYen(r.totalAcq) + '</div></div>' +
+      '<div class="card"><div class="label">評価損益</div><div class="value ' + cls + '">' + (r.pnl >= 0 ? '+' : '') + fmtYen(r.pnl) + ' (' + (r.pnlPct>=0?'+':'') + r.pnlPct.toFixed(1) + '%)</div></div>';
+  }
+  cards.innerHTML = cardHtml;
+
+  const tbody = document.querySelector('#statsTable tbody');
+  const sourceLabel = { wisesheets: 'Wisesheets', stooq: 'stooq', manual: '手動CSV' };
+  tbody.innerHTML = r.validHoldings.map((h, i) => {
+    const mvDisplay = (h.ccy === 'USD'
+      ? '$' + h.mv.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' (≈' + fmtYen(h.mvJPY) + ')'
+      : fmtYen(h.mvJPY)) + (h.mvAuto ? ' <span style="color:var(--text-faint); font-size:11px;">※自動計算</span>' : '');
+    return '<tr><td class="tk">' + h.ticker + ' (' + h.sym + ')</td><td>' + (sourceLabel[h.source] || '-') + '</td><td>' + mvDisplay + '</td><td>' + (r.w[i]*100).toFixed(1) + '%</td>' +
+      '<td>' + fmtPct(r.muA[i]) + '</td><td>' + fmtPct(Math.sqrt(r.covA[i][i])) + '</td></tr>';
+  }).join('');
+
+  const notes = document.getElementById('notesList');
+  const wsHoldingsCount = r.validHoldings.filter(h => h.source === 'wisesheets').length;
+  const noteItems = [
+    wsHoldingsCount > 0
+      ? 'Wisesheets APIで取得した' + wsHoldingsCount + '銘柄（米国株）は配当調整後終値（adjClose）ベースで正確にリターンを計算し、それ以外はstooq.com等の終値ベース＋想定利回りの近似計算です。'
+      : '株価データは stooq.com より取得（終値ベース）。分割は調整済みですが、配当は自動反映されないため、配当再投資は年間利回りを一定按分する近似計算です。',
+    'リターン・リスクは対象期間の実績（' + r.params.label + '）に基づく単純平均・年率換算であり、将来の運用成果を保証するものではありません。',
+    '効率的フロンティアは空売りなし（各銘柄ウェイト0〜100%）の制約下でモンテカルロ・シミュレーション（8,000通り）した近似曲線です。',
+    '無リスク金利は年率 ' + (r.rfAnnual*100).toFixed(2) + '% として計算しています。'
+  ];
+  if (wsHoldingsCount > 0) {
+    noteItems.push('Wisesheetsは個人利用ライセンスのAPIです。業務・法人・顧客資金運用目的での利用は同社の利用規約をご確認ください。また現時点で米国上場銘柄のみ対応しています。');
+  }
+  if (r.fxRate) {
+    noteItems.push('米ドル建て銘柄は 1USD = ' + r.fxRate.toFixed(2) + '円' +
+      (r.fxDate ? '（' + r.fxDate + '時点、stooq.comのUSDJPYレート）' : '（手動入力レート）') +
+      'で円換算し、ウェイト・評価損益を計算しています。');
+  }
+  const autoMvHoldings = r.validHoldings.filter(h => h.mvAuto);
+  if (autoMvHoldings.length > 0) {
+    noteItems.push('時価が未入力の銘柄は、株数×直近終値で自動計算しています: ' +
+      autoMvHoldings.map(h => h.ticker + '（' + h.mvAsOfDate + '時点）').join('、') + '。');
+  }
+  notes.innerHTML = noteItems.map(n => '<li>' + n + '</li>').join('');
+
+  const ctx = document.getElementById('frontierChart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  const datasets = [];
+  if (r.mcPoints.length > 0) {
+    datasets.push({
+      type: 'scatter',
+      label: 'シミュレーション',
+      data: r.mcPoints.map(p => ({ x: p.sigma * 100, y: p.mu * 100 })),
+      backgroundColor: 'rgba(58,70,86,0.5)',
+      pointRadius: 2,
+      pointHoverRadius: 3
+    });
+  }
+  if (r.envelope.length > 0) {
+    datasets.push({
+      type: 'line',
+      label: '効率的フロンティア（近似）',
+      data: r.envelope.map(p => ({ x: p.sigma * 100, y: p.mu * 100 })),
+      borderColor: '#5fb3b3',
+      backgroundColor: 'rgba(95,179,179,0.15)',
+      borderWidth: 2.5,
+      pointRadius: 0,
+      tension: 0.25,
+      fill: false
+    });
+  }
+  datasets.push({
+    type: 'scatter',
+    label: '個別銘柄',
+    data: r.validHoldings.map((h, i) => ({
+      x: Math.sqrt(r.covA[i][i]) * 100,
+      y: r.muA[i] * 100,
+      tickerLabel: h.ticker
+    })),
+    backgroundColor: 'rgba(143,168,201,0.35)',
+    borderColor: 'rgba(143,168,201,0.95)',
+    borderWidth: 1.5,
+    pointStyle: 'circle',
+    pointRadius: 5,
+    pointHoverRadius: 6,
+    showTickerLabels: true
+  });
+  datasets.push({
+    type: 'scatter',
+    label: '現在のポートフォリオ',
+    data: [{ x: r.curSigma * 100, y: r.curMu * 100 }],
+    backgroundColor: '#c9a15a',
+    pointStyle: 'rectRot',
+    pointRadius: 8,
+    pointHoverRadius: 9
+  });
+  if (r.minVol) {
+    datasets.push({
+      type: 'scatter',
+      label: '最小分散',
+      data: [{ x: r.minVol.sigma * 100, y: r.minVol.mu * 100 }],
+      backgroundColor: '#6fae7f',
+      pointStyle: 'triangle',
+      pointRadius: 7
+    });
+  }
+  if (r.maxSharpe) {
+    datasets.push({
+      type: 'scatter',
+      label: '最大シャープ',
+      data: [{ x: r.maxSharpe.sigma * 100, y: r.maxSharpe.mu * 100 }],
+      backgroundColor: '#d1685e',
+      pointStyle: 'star',
+      pointRadius: 8
+    });
+  }
+
+  const tickerLabelPlugin = {
+    id: 'tickerLabelPlugin',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      chart.data.datasets.forEach((ds, dsIndex) => {
+        if (!ds.showTickerLabels) return;
+        const meta = chart.getDatasetMeta(dsIndex);
+        if (meta.hidden) return;
+        meta.data.forEach((point, i) => {
+          const label = ds.data[i] && ds.data[i].tickerLabel;
+          if (!label) return;
+          ctx.save();
+          ctx.fillStyle = '#8fa8c9';
+          ctx.font = '11px "IBM Plex Mono", monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, point.x + 7, point.y);
+          ctx.restore();
+        });
+      });
+    }
+  };
+
+  chartInstance = new Chart(ctx, {
+    data: { datasets },
+    plugins: [tickerLabelPlugin],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const d = item.raw;
+              const name = d.tickerLabel || item.dataset.label;
+              return name + ':  リスク ' + d.x.toFixed(2) + '%  /  リターン ' + d.y.toFixed(2) + '%';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'リスク（年率標準偏差, %）', color: '#8a97a3' },
+          grid: { color: 'rgba(42,53,66,0.6)' },
+          ticks: { color: '#8a97a3' }
+        },
+        y: {
+          title: { display: true, text: '期待リターン（年率, %）', color: '#8a97a3' },
+          grid: { color: 'rgba(42,53,66,0.6)' },
+          ticks: { color: '#8a97a3' }
+        }
+      }
+    }
+  });
+
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+</body>
+</html>
