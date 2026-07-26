@@ -337,7 +337,8 @@
       <input type="checkbox" id="divToggle">
       <label for="divToggle" style="font-size:13px;">配当再投資を考慮する（近似計算）</label>
     </div>
-    <p class="hint">株価データのみでは配当額を正確に取得できないため、銘柄ごとに想定年間配当利回りを入力し、各期間のリターンに按分して加算する近似方式です（下記Wisesheets APIキーを設定した米国株は、配当調整後終値ベースで正確に計算されます）。無配・不明な場合は 0 のままで構いません。</p>
+    <p class="hint">株価データのみでは配当額を正確に取得できないため、銘柄ごとに想定年間配当利回りを入力し、各期間のリターンに按分して加算する近似方式です（下記Wisesheets APIキーを設定した米国株は、配当調整後終値ベースで正確に計算されるため、この欄の値自体は計算に使われません）。Wisesheets対応銘柄は、この欄が空欄（0）であれば分析実行時に配当利回りを自動取得して表示します。日本株など非対応銘柄は、無配・不明な場合は 0 のままで構いません。</p>
+    <p class="hint" style="color:var(--text-faint);">※Wisesheetsの新REST APIには配当利回り専用エンドポイントが無いため、指標カタログ（/v1/metrics）を検索して該当する指標を自動判定しています。取得できない場合はエラーがログに表示されるので、その際は手動で入力してください。</p>
 
     <div class="field" style="margin-top:16px;">
       <label>Wisesheets APIキー（任意・米国株の取得に使用）</label>
@@ -852,6 +853,48 @@ let chartInstance = null;
 // the moment the user clicks "分析を実行" again).
 const manualDataCache = {}; // sym -> { series: [{date,close,adjClose}], source: 'manual' | 'wisesheets' }
 
+// Memoized across the page session, since the metric catalog doesn't change per-run.
+let cachedDividendMetric = null;
+
+async function discoverDividendYieldMetricKey(apiKey) {
+  if (cachedDividendMetric) return cachedDividendMetric;
+  const res = await fetch('https://api.wisesheets.io/v1/metrics/?q=' + encodeURIComponent('dividend yield'), {
+    headers: { 'Authorization': 'Bearer ' + apiKey }
+  });
+  if (!res.ok) {
+    let bodyText = ''; try { bodyText = await res.text(); } catch (e) { /* ignore */ }
+    throw new Error('Wisesheets metrics HTTP ' + res.status + (bodyText ? ' - ' + bodyText.slice(0, 300) : ''));
+  }
+  const json = await res.json();
+  const candidates = Array.isArray(json.data) ? json.data : [];
+  const best = candidates.find(m => m.metric === 'dividend_yield')
+    || candidates.find(m => /dividend/i.test(m.metric) && /yield/i.test(m.metric))
+    || candidates.find(m => /dividend/i.test(m.label || '') && /yield/i.test(m.label || ''))
+    || candidates[0];
+  if (!best) throw new Error('配当利回りに該当する指標が指標カタログで見つかりませんでした');
+  cachedDividendMetric = { key: best.metric, unitType: best.unitType };
+  return cachedDividendMetric;
+}
+
+async function fetchWisesheetsDividendYields(wsSymbols, apiKey) {
+  const metricInfo = await discoverDividendYieldMetricKey(apiKey);
+  const url = 'https://api.wisesheets.io/v1/financials/?tickers=' + encodeURIComponent(wsSymbols.join(',')) +
+    '&metrics=' + encodeURIComponent(metricInfo.key) + '&period=latest';
+  const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + apiKey } });
+  if (!res.ok) {
+    let bodyText = ''; try { bodyText = await res.text(); } catch (e) { /* ignore */ }
+    throw new Error('Wisesheets financials HTTP ' + res.status + (bodyText ? ' - ' + bodyText.slice(0, 300) : ''));
+  }
+  const json = await res.json();
+  const out = {};
+  (json.data || []).forEach(row => {
+    const v = parseFloat(row.value);
+    if (isNaN(v)) return;
+    out[row.ticker] = metricInfo.unitType === 'ratio' ? v * 100 : v;
+  });
+  return out;
+}
+
 document.getElementById('runBtn').addEventListener('click', runAnalysis);
 
 async function runAnalysis() {
@@ -938,6 +981,30 @@ async function runAnalysis() {
     const wsSym = wisesheetsApiKey ? symbolToWisesheets(sym) : null;
     if (wsSym) wsCandidates.push({ h, sym, wsSym });
     else restHoldings.push({ h, sym });
+  }
+
+  if (divOn && wsCandidates.length > 0) {
+    log('Wisesheetsから配当利回りを取得中…（' + wsCandidates.length + '銘柄）');
+    try {
+      const yields = await fetchWisesheetsDividendYields(wsCandidates.map(c => c.wsSym), wisesheetsApiKey);
+      const rowsEls = [...document.querySelectorAll('#holdingsBody tr')];
+      wsCandidates.forEach(c => {
+        const y = yields[c.wsSym];
+        if (y == null) return;
+        const rowEl = rowsEls.find(tr => tr.querySelector('.f-ticker').value.trim() === c.h.ticker);
+        const divInput = rowEl ? rowEl.querySelector('.f-div') : null;
+        const currentVal = divInput ? parseFloat(divInput.value) : NaN;
+        // Only auto-fill if the field is still at its untouched default (blank/0);
+        // a value the user already typed is left alone.
+        if (!currentVal) {
+          if (divInput) divInput.value = y.toFixed(2);
+          c.h.divY = y;
+          log('  ✓ ' + c.h.ticker + ': 配当利回り ' + y.toFixed(2) + '% を自動取得', 'ok');
+        }
+      });
+    } catch (e) {
+      log('  ✗ 配当利回りの自動取得に失敗しました（' + (e.message || e) + '）。手動入力の値をそのまま使用します。', 'warn');
+    }
   }
 
   if (wsCandidates.length > 0) {
