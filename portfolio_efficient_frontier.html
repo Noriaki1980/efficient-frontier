@@ -249,7 +249,16 @@
   .notes{ font-size: 12.5px; color: var(--text-faint); border-top: 1px solid var(--border); padding-top:16px; margin-top:8px; }
   .notes li{ margin-bottom:6px; }
 
+  .sub-h{ font-family: var(--font-display); font-size: 16px; font-weight: 600; margin: 28px 0 14px; }
+  .prop-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 0 0 24px; }
+  .prop-card{ background: var(--panel-alt); border: 1px solid var(--border); border-radius: 8px; padding: 18px; min-width: 0; }
+  .prop-card h4{ margin: 0 0 4px; font-family: var(--font-display); font-size: 15px; display:flex; align-items:center; gap:8px; }
+  .prop-card .desc{ color: var(--text-faint); font-size: 12.5px; margin: 0 0 14px; }
+  .prop-card .prop-note{ color: var(--gold); font-size: 12.5px; margin: 0 0 12px; }
+  .prop-card table.stats{ font-size: 12.5px; margin-bottom: 14px; }
+  .tbl-scroll{ overflow-x: auto; }
   @media (max-width: 720px){
+    .prop-grid{ grid-template-columns: 1fr; }
     .cards{ grid-template-columns: repeat(2,1fr); }
     .grid2{ grid-template-columns: 1fr; }
     h1{ font-size: 26px; }
@@ -308,6 +317,11 @@
         <input type="number" id="riskFreeRate" value="0" step="0.1">
       </div>
       <div class="field">
+        <label>ベンチマーク（任意・トレイナーレシオ/β用）</label>
+        <input type="text" id="benchmarkTicker" placeholder="例: VTI（空欄ならトレイナーは非表示）">
+        <p class="hint" style="margin-top:2px;">米国株/ETFは VTI や SPY など。日本株は 1306 など。保有銘柄と同じ取得方法（Wisesheets/貼り付け）で取得します。期間は保有銘柄との共通期間に揃えます。</p>
+      </div>
+      <div class="field">
         <label>USD/JPY為替レート（空欄なら自動取得）</label>
         <input type="number" id="fxRateOverride" placeholder="例: 155.00" step="0.01">
         <p class="hint" style="margin-top:2px;">ドル建て銘柄がある場合のみ使用します。空欄の場合は stooq.com から直近レートを自動取得します。</p>
@@ -356,20 +370,25 @@
 
     <div class="legend-row">
       <span><i class="dot" style="background:#3a4656"></i>モンテカルロ・シミュレーション（空売りなし）</span>
-      <span><i class="dot" style="background:var(--teal)"></i>効率的フロンティア（近似）</span>
+      <span><i class="dot" style="background:var(--teal)"></i>効率的フロンティア（空売りなし）</span>
       <span><i class="dot" style="background:#8fa8c9"></i>個別銘柄</span>
-      <span><i class="dot" style="background:var(--gold)"></i>現在のポートフォリオ</span>
+      <span><i class="dot" style="background:#e0b45c; box-shadow:0 0 0 2px #fff"></i>現在のポートフォリオ</span>
+      <span><i class="dot" style="background:transparent; border:1.5px dashed #e0b45c; width:14px; border-radius:0; height:0; border-width:0 0 1.5px 0"></i>現在と同じリスク／リターン（破線）</span>
       <span><i class="dot" style="background:var(--green)"></i>最小分散ポートフォリオ</span>
       <span><i class="dot" style="background:var(--rose)"></i>最大シャープ・ポートフォリオ</span>
+      <span><i class="dot" style="background:#b995e6"></i>提案A（リスク据え置き）</span>
+      <span><i class="dot" style="background:#e58bb8"></i>提案B（リターン据え置き）</span>
     </div>
     <div class="chart-wrap"><canvas id="frontierChart"></canvas></div>
 
-    <table class="stats" id="statsTable">
+    <div class="tbl-scroll"><table class="stats" id="statsTable">
       <thead>
-        <tr><th>銘柄</th><th>データ元</th><th>時価</th><th>ウェイト</th><th>年率リターン</th><th>年率リスク</th></tr>
+        <tr><th>銘柄</th><th>データ元</th><th>時価</th><th>ウェイト</th><th>年率リターン</th><th>年率リスク</th><th>シャープ</th><th>ソルティノ</th><th>トレイナー</th></tr>
       </thead>
       <tbody></tbody>
-    </table>
+    </table></div>
+
+    <div id="proposals"></div>
 
     <div class="notes">
       <ul id="notesList"></ul>
@@ -532,7 +551,7 @@ function buildFinalReturns(closeReturns, adjReturns, validHoldings, divOn, perio
     const row = [];
     for (let j = 0; j < n; j++) {
       const h = validHoldings[j];
-      if (divOn && h.source === 'wisesheets') {
+      if (divOn && (h.source === 'wisesheets' || h.source === 'yahoo')) {
         row.push(adjReturns[t][j]);
       } else if (divOn && h.divY) {
         row.push(closeReturns[t][j] + (h.divY / 100) / periodsPerYear);
@@ -621,6 +640,40 @@ function annualizeStats(muPeriod, covPeriod, periodsPerYear) {
   return { muA, covA };
 }
 
+/* ===================== Ratio metrics (Sharpe / Sortino / Treynor) ===================== */
+/* rets: per-period return series. bench: per-period benchmark returns (or null).
+   Sortino uses MAR = risk-free rate (per period); Treynor = (mu - rf) / beta. */
+function ratioMetrics(rets, ppy, rfAnnual, bench) {
+  const T = rets.length;
+  const out = { mu: NaN, sigma: NaN, sharpe: null, sortino: null, beta: null, treynor: null };
+  if (T < 2) return out;
+  const mean = rets.reduce((s, x) => s + x, 0) / T;
+  let v = 0; for (const x of rets) v += (x - mean) * (x - mean);
+  v /= (T - 1);
+  out.mu = mean * ppy;
+  out.sigma = Math.sqrt(v * ppy);
+  if (out.sigma > 1e-12) out.sharpe = (out.mu - rfAnnual) / out.sigma;
+  const mar = rfAnnual / ppy;
+  let dd = 0; for (const x of rets) { const d = Math.min(0, x - mar); dd += d * d; }
+  const downside = Math.sqrt(dd / T) * Math.sqrt(ppy);
+  if (downside > 1e-12) out.sortino = (out.mu - rfAnnual) / downside;
+  if (bench && bench.length === T) {
+    const mb = bench.reduce((s, x) => s + x, 0) / T;
+    let cv = 0, vb = 0;
+    for (let t = 0; t < T; t++) { cv += (rets[t] - mean) * (bench[t] - mb); vb += (bench[t] - mb) * (bench[t] - mb); }
+    if (vb > 1e-14) {
+      out.beta = cv / vb;
+      if (out.beta > 0.05) out.treynor = (out.mu - rfAnnual) / out.beta;
+    }
+  }
+  return out;
+}
+function weightedSeries(returns, w) {
+  return returns.map(row => row.reduce((s, x, j) => s + x * w[j], 0));
+}
+function fmtRatio(x) { return x == null || !isFinite(x) ? '－' : x.toFixed(2); }
+function fmtTreynor(x) { return x == null || !isFinite(x) ? '－' : (x * 100).toFixed(1) + '%'; }
+
 /* ===================== Portfolio math ===================== */
 function portfolioMu(w, mu) {
   let s = 0; for (let i = 0; i < w.length; i++) s += w[i] * mu[i]; return s;
@@ -677,6 +730,166 @@ function buildFrontierEnvelope(points, bins) {
     envelope.push({ sigma: minS + (i + 0.5) * binWidth, mu: runningMax });
   }
   return envelope;
+}
+
+/* ===================== Long-only mean-variance optimizer ===================== */
+/* Solve M x = b by Gaussian elimination with partial pivoting. Returns null if singular. */
+function solveLinear(M, b) {
+  const n = b.length;
+  const A = M.map((row, i) => row.slice().concat([b[i]]));
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    if (Math.abs(A[piv][c]) < 1e-14) return null;
+    if (piv !== c) { const t = A[c]; A[c] = A[piv]; A[piv] = t; }
+    for (let r = c + 1; r < n; r++) {
+      const f = A[r][c] / A[c][c];
+      if (f === 0) continue;
+      for (let k = c; k <= n; k++) A[r][k] -= f * A[c][k];
+    }
+  }
+  const x = new Array(n).fill(0);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = A[r][n];
+    for (let k = r + 1; k < n; k++) s -= A[r][k] * x[k];
+    x[r] = s / A[r][r];
+  }
+  return x;
+}
+
+/* Minimise w'Σw subject to sum(w)=1, w>=0 and, if target is a number, mu'w = target.
+   Primal active-set method. Returns the weight vector, or null if infeasible. */
+function minVarLongOnly(covA, muA, target) {
+  const n = muA.length;
+  let useRet = typeof target === 'number';
+  const muMax = Math.max(...muA), muMin = Math.min(...muA);
+  const span = muMax - muMin;
+  const eps = 1e-12 * Math.max(1, Math.abs(muMax), Math.abs(muMin));
+  if (useRet) {
+    if (span < eps) useRet = false;
+    else if (target < muMin - eps || target > muMax + eps) return null;
+  }
+  if (useRet) target = Math.min(muMax, Math.max(muMin, target));
+  const ones = new Array(n).fill(1);
+  const rows = useRet ? [ones, muA] : [ones];
+  const rhs = useRet ? [1, target] : [1];
+
+  let tr = 0; for (let i = 0; i < n; i++) tr += covA[i][i];
+  const ridge = 1e-10 * (tr / n || 1);
+
+  const w = new Array(n).fill(0);
+  const free = new Set();
+  if (!useRet) {
+    let k = 0; for (let i = 1; i < n; i++) if (covA[i][i] < covA[k][k]) k = i;
+    w[k] = 1; free.add(k);
+  } else {
+    let lo = -1, hi = -1;
+    for (let i = 0; i < n; i++) {
+      if (muA[i] <= target + eps && (lo < 0 || muA[i] > muA[lo])) lo = i;
+      if (muA[i] >= target - eps && (hi < 0 || muA[i] < muA[hi])) hi = i;
+    }
+    if (lo < 0 || hi < 0) return null;
+    if (Math.abs(muA[hi] - muA[lo]) < eps) {
+      w[lo] = 1; free.add(lo);
+      let other = -1;
+      for (let i = 0; i < n; i++) if (Math.abs(muA[i] - muA[lo]) > eps) { other = i; break; }
+      if (other < 0) return null;
+      free.add(other);
+    } else {
+      const lam = (muA[hi] - target) / (muA[hi] - muA[lo]);
+      w[lo] = lam; w[hi] = 1 - lam; free.add(lo); free.add(hi);
+    }
+  }
+
+  for (let iter = 0; iter < 2000; iter++) {
+    const F = [...free], m = F.length, r = rows.length, size = m + r;
+    const K = Array.from({ length: size }, () => new Array(size).fill(0));
+    const rv = new Array(size).fill(0);
+    for (let a = 0; a < m; a++) for (let b = 0; b < m; b++) K[a][b] = covA[F[a]][F[b]] + (a === b ? ridge : 0);
+    for (let k = 0; k < r; k++) {
+      for (let a = 0; a < m; a++) { K[a][m + k] = rows[k][F[a]]; K[m + k][a] = rows[k][F[a]]; }
+      K[m + k][m + k] = -1e-13;
+      rv[m + k] = rhs[k];
+    }
+    const sol = solveLinear(K, rv);
+    if (!sol) break;
+    const wStar = new Array(n).fill(0);
+    for (let a = 0; a < m; a++) wStar[F[a]] = sol[a];
+    const lam = sol.slice(m);
+    const p = wStar.map((v, i) => v - w[i]);
+    let maxP = 0; for (const v of p) maxP = Math.max(maxP, Math.abs(v));
+    if (maxP < 1e-12) {
+      let worst = -1e-10, kmin = -1;
+      for (let k = 0; k < n; k++) {
+        if (free.has(k)) continue;
+        let g = 0; for (let j = 0; j < n; j++) g += covA[k][j] * w[j];
+        for (let q = 0; q < r; q++) g += rows[q][k] * lam[q];
+        if (g < worst) { worst = g; kmin = k; }
+      }
+      if (kmin < 0) break;
+      free.add(kmin);
+    } else {
+      let alpha = 1, block = -1;
+      for (const i of F) {
+        if (p[i] < -1e-14) {
+          const a = -w[i] / p[i];
+          if (a < alpha) { alpha = a; block = i; }
+        }
+      }
+      for (let i = 0; i < n; i++) w[i] += alpha * p[i];
+      if (block >= 0) { w[block] = 0; free.delete(block); }
+    }
+  }
+  let s = 0;
+  for (let i = 0; i < n; i++) { if (w[i] < 0) w[i] = 0; s += w[i]; }
+  return s > 0 ? w.map(v => v / s) : null;
+}
+
+function pfMu(w, mu) { let s = 0; for (let i = 0; i < w.length; i++) s += w[i] * mu[i]; return s; }
+function pfSigma(w, cov) {
+  let s = 0; const n = w.length;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) s += w[i] * w[j] * cov[i][j];
+  return Math.sqrt(Math.max(s, 0));
+}
+
+/* Exact long-only efficient frontier sampled at `count`+1 target returns. */
+function computeEfficientFrontier(muA, covA, count) {
+  const mv = minVarLongOnly(covA, muA, null);
+  if (!mv) return { points: [], minVar: null };
+  const tLo = pfMu(mv, muA), tHi = Math.max(...muA);
+  const points = [];
+  for (let k = 0; k <= count; k++) {
+    const t = tLo + (tHi - tLo) * k / count;
+    const w = minVarLongOnly(covA, muA, t);
+    if (w) points.push({ w, mu: pfMu(w, muA), sigma: pfSigma(w, covA) });
+  }
+  return { points, minVar: { w: mv, mu: tLo, sigma: pfSigma(mv, covA) } };
+}
+
+/* Highest return whose risk does not exceed the current portfolio's risk. */
+function proposeSameRisk(w0, muA, covA) {
+  const sigma0 = pfSigma(w0, covA);
+  const mv = minVarLongOnly(covA, muA, null);
+  if (!mv) return null;
+  const tLo = pfMu(mv, muA), tHi = Math.max(...muA);
+  const wHi = minVarLongOnly(covA, muA, tHi);
+  if (wHi && pfSigma(wHi, covA) <= sigma0 + 1e-12) return wHi;
+  let lo = tLo, hi = tHi, best = mv;
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    const w = minVarLongOnly(covA, muA, mid);
+    if (w && pfSigma(w, covA) <= sigma0) { lo = mid; best = w; } else hi = mid;
+  }
+  return best;
+}
+
+/* Lowest risk whose return is at least the current portfolio's return. */
+function proposeSameReturn(w0, muA, covA) {
+  const mu0 = pfMu(w0, muA);
+  const mv = minVarLongOnly(covA, muA, null);
+  if (!mv) return null;
+  if (pfMu(mv, muA) >= mu0) return mv;
+  return minVarLongOnly(covA, muA, mu0);
 }
 
 /* ===================== UI wiring ===================== */
@@ -909,6 +1122,15 @@ async function runAnalysis() {
   runBtn.disabled = true;
   runBtn.textContent = '分析中…';
 
+  // Optional benchmark: fetched through the same paths as a pseudo-holding
+  // (JPY, so no FX needed) and split out again before portfolio math.
+  const benchRaw = (document.getElementById('benchmarkTicker').value || '').trim();
+  const benchSym = benchRaw ? normalizeSymbol(benchRaw) : null;
+  const benchReuse = benchSym && holdings.some(h => normalizeSymbol(h.ticker) === benchSym);
+  if (benchSym && !benchReuse) {
+    holdings.push({ ticker: benchRaw, ccy: 'JPY', acq: NaN, qty: 1, mv: NaN, divY: 0, isBenchmark: true });
+  }
+
   const preset = document.getElementById('periodPreset').value;
   const customStart = document.getElementById('customStart').value;
   const customEnd = document.getElementById('customEnd').value;
@@ -926,7 +1148,7 @@ async function runAnalysis() {
   log('期間設定: ' + params.label + '（' + params.d1 + ' 〜 ' + params.d2 + '）');
 
   let fxRate = null, fxDate = null;
-  const needsFx = holdings.some(h => h.ccy === 'USD');
+  const needsFx = holdings.some(h => h.ccy === 'USD' && !h.isBenchmark);
   if (needsFx) {
     const override = parseFloat(document.getElementById('fxRateOverride').value);
     if (!isNaN(override) && override > 0) {
@@ -961,6 +1183,7 @@ async function runAnalysis() {
     }
     return {
       ...h, sym, source, mv, mvAuto, mvAsOfDate: lastRow.date,
+      lastClose: lastRow.close, rate: rateFor(h.ccy),
       mvJPY: mv * rateFor(h.ccy),
       acqJPY: isNaN(h.acq) ? NaN : h.acq * rateFor(h.ccy)
     };
@@ -983,12 +1206,13 @@ async function runAnalysis() {
     else restHoldings.push({ h, sym });
   }
 
-  if (divOn && wsCandidates.length > 0) {
-    log('Wisesheetsから配当利回りを取得中…（' + wsCandidates.length + '銘柄）');
+  const wsDivCandidates = wsCandidates.filter(c => !c.h.isBenchmark);
+  if (divOn && wsDivCandidates.length > 0) {
+    log('Wisesheetsから配当利回りを取得中…（' + wsDivCandidates.length + '銘柄）');
     try {
-      const yields = await fetchWisesheetsDividendYields(wsCandidates.map(c => c.wsSym), wisesheetsApiKey);
+      const yields = await fetchWisesheetsDividendYields(wsDivCandidates.map(c => c.wsSym), wisesheetsApiKey);
       const rowsEls = [...document.querySelectorAll('#holdingsBody tr')];
-      wsCandidates.forEach(c => {
+      wsDivCandidates.forEach(c => {
         const y = yields[c.wsSym];
         if (y == null) return;
         const rowEl = rowsEls.find(tr => tr.querySelector('.f-ticker').value.trim() === c.h.ticker);
@@ -1045,9 +1269,17 @@ async function runAnalysis() {
       validHoldings.push(commitHolding(h, sym, seriesByTicker[sym], 'stooq'));
       log('  ✓ ' + rawSeries.length + '件取得', 'ok');
     } catch (e) {
-      log('  ✗ 自動取得に失敗しました（' + (e.message || e) + '）。下の欄にCSVを貼り付けてください。', 'err');
+      log('  ✗ 自動取得に失敗しました（' + (e.message || e) + '）。下の欄にYahooのJSON（またはCSV）を貼り付けてください。', 'err');
       showManualCsvBox(h.ticker, sym, params);
     }
+  }
+
+  // Split the benchmark pseudo-holding back out.
+  const benchHolding = validHoldings.find(h => h.isBenchmark) || null;
+  const allHoldings = validHoldings.slice();
+  if (benchHolding) validHoldings.splice(validHoldings.indexOf(benchHolding), 1);
+  if (benchSym && !benchReuse && !benchHolding) {
+    log('ベンチマーク ' + benchRaw + ' のデータを取得できなかったため、トレイナーレシオとβは表示しません（貼り付け欄にデータを入れて再実行すると表示されます）。', 'warn');
   }
 
   if (validHoldings.length === 0) {
@@ -1056,7 +1288,8 @@ async function runAnalysis() {
     return;
   }
 
-  const tickers = validHoldings.map(h => h.sym);
+  const tickers = allHoldings.map(h => h.sym);
+  tickers.forEach(t => { seriesByTicker[t] = resampleSeries(seriesByTicker[t], params.interval); });
   const { dates, closeMatrix, adjMatrix } = alignSeries(seriesByTicker, tickers);
   if (dates.length < 5) {
     log('銘柄間で共通する取引日が少なすぎます（' + dates.length + '件）。期間や銘柄を見直してください。', 'err');
@@ -1067,10 +1300,17 @@ async function runAnalysis() {
 
   const closeReturns = pricesToReturns(closeMatrix);
   const adjReturns = pricesToReturns(adjMatrix);
-  const returns = buildFinalReturns(closeReturns, adjReturns, validHoldings, divOn, params.periodsPerYear);
+  const allReturns = buildFinalReturns(closeReturns, adjReturns, allHoldings, divOn, params.periodsPerYear);
+  const nCore = validHoldings.length;
+  let benchIdx = -1;
+  if (benchHolding) benchIdx = allHoldings.indexOf(benchHolding);
+  else if (benchReuse) benchIdx = validHoldings.findIndex(h => h.sym === benchSym);
+  const benchRets = benchIdx >= 0 ? allReturns.map(row => row[benchIdx]) : null;
+  const returns = allReturns.map(row => row.slice(0, nCore));
+  if (benchRets && benchHolding) log('ベンチマーク: ' + benchRaw + '（' + benchHolding.source + '、' + benchRets.length + '期間）', 'ok');
   if (divOn) {
-    const wsCount = validHoldings.filter(h => h.source === 'wisesheets').length;
-    log('配当再投資を反映しました（Wisesheets取得の' + wsCount + '銘柄は配当調整後終値ベース、その他は近似加算）。', 'warn');
+    const wsCount = validHoldings.filter(h => h.source === 'wisesheets' || h.source === 'yahoo').length;
+    log('配当再投資を反映しました（配当調整後終値が使える' + wsCount + '銘柄は実際の配当込み、その他は想定利回りの近似加算）。', 'warn');
   }
 
 
@@ -1084,26 +1324,48 @@ async function runAnalysis() {
   const curSigma = portfolioSigma(w, covA);
   const curSharpe = curSigma > 0 ? (curMu - rfAnnual) / curSigma : 0;
 
+  const ppy = params.periodsPerYear;
+  const curRatios = ratioMetrics(weightedSeries(returns, w), ppy, rfAnnual, benchRets);
+  const holdRatios = validHoldings.map((h, j) => ratioMetrics(returns.map(row => row[j]), ppy, rfAnnual, benchRets));
+  const ratiosOf = (wv) => ratioMetrics(weightedSeries(returns, wv), ppy, rfAnnual, benchRets);
+  const hasBench = !!benchRets;
+  const benchLabel = hasBench ? benchRaw : null;
+
   const hasAcq = validHoldings.some(h => !isNaN(h.acqJPY) && h.acqJPY > 0);
   const totalAcq = validHoldings.reduce((s, h) => s + (isNaN(h.acqJPY) ? 0 : h.acqJPY), 0);
   const pnl = totalMV - totalAcq;
   const pnlPct = totalAcq > 0 ? (pnl / totalAcq) * 100 : null;
 
-  let minVol = null, maxSharpe = null, envelope = [], mcPoints = [];
+  let minVol = null, maxSharpe = null, envelope = [], mcPoints = [], proposals = null, frontierExact = false;
   if (validHoldings.length >= 2) {
     mcPoints = monteCarloFrontier(muA, covA, rfAnnual, 8000);
-    minVol = mcPoints.reduce((a, b) => (b.sigma < a.sigma ? b : a));
-    maxSharpe = mcPoints.reduce((a, b) => (b.sharpe > a.sharpe ? b : a));
-    envelope = buildFrontierEnvelope(mcPoints, 50);
+    const front = computeEfficientFrontier(muA, covA, 120);
+    const sharpeOf = (q) => q.sigma > 0 ? (q.mu - rfAnnual) / q.sigma : -Infinity;
+    if (front.points.length >= 2) {
+      frontierExact = true;
+      envelope = front.points;
+      minVol = front.minVar;
+      maxSharpe = front.points.reduce((a, b) => (sharpeOf(b) > sharpeOf(a) ? b : a));
+      const pack = (wv) => wv ? { w: wv, mu: portfolioMu(wv, muA), sigma: portfolioSigma(wv, covA),
+        sharpe: portfolioSigma(wv, covA) > 0 ? (portfolioMu(wv, muA) - rfAnnual) / portfolioSigma(wv, covA) : 0,
+        ratios: ratiosOf(wv) } : null;
+      const pA = pack(proposeSameRisk(w, muA, covA)), pB = pack(proposeSameReturn(w, muA, covA));
+      if (pA && pB) proposals = { sameRisk: pA, sameReturn: pB };
+    } else {
+      minVol = mcPoints.reduce((a, b) => (b.sigma < a.sigma ? b : a));
+      maxSharpe = mcPoints.reduce((a, b) => (b.sharpe > a.sharpe ? b : a));
+      envelope = buildFrontierEnvelope(mcPoints, 50);
+    }
   } else {
     log('銘柄が1件のため、効率的フロンティア（分散効果）は表示されません。', 'warn');
   }
 
   renderResults({
     validHoldings, w, muA, covA, curMu, curSigma, curSharpe,
+    curRatios, holdRatios, hasBench, benchLabel,
     totalMV, totalAcq, pnl, pnlPct, hasAcq,
     mcPoints, minVol, maxSharpe, envelope, params, rfAnnual,
-    fxRate, fxDate
+    fxRate, fxDate, divOn, proposals, frontierExact
   });
 
   runBtn.disabled = false;
@@ -1127,34 +1389,91 @@ function buildYahooHistoryUrl(sym, interval, d1, d2) {
     '/history/?frequency=' + freq + '&period1=' + p1 + '&period2=' + p2;
 }
 
+/* ===================== Yahoo chart JSON + resampling ===================== */
+function buildYahooChartUrl(sym, params) {
+  const t = symbolToYahoo(sym);
+  const p1 = stooqDateToUnix(params.d1);
+  const p2 = stooqDateToUnix(params.d2) + 86400;
+  return 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(t) +
+    '?period1=' + p1 + '&period2=' + p2 + '&interval=1d';
+}
+
+function parseYahooChartJson(text) {
+  const json = JSON.parse(text);
+  if (json.chart && json.chart.error) {
+    throw new Error('Yahooがエラーを返しました: ' + (json.chart.error.description || json.chart.error.code));
+  }
+  const result = json.chart && json.chart.result && json.chart.result[0];
+  if (!result || !Array.isArray(result.timestamp)) throw new Error('chart.result[0].timestamp が見つかりません');
+  const ts = result.timestamp;
+  const offset = (result.meta && result.meta.gmtoffset) || 0;
+  const closes = result.indicators && result.indicators.quote && result.indicators.quote[0] && result.indicators.quote[0].close;
+  const adjs = result.indicators && result.indicators.adjclose && result.indicators.adjclose[0] && result.indicators.adjclose[0].adjclose;
+  if (!closes) throw new Error('終値(close)が見つかりません');
+  const out = [];
+  for (let i = 0; i < ts.length; i++) {
+    const c = closes[i];
+    if (c == null || isNaN(c)) continue;
+    const a = adjs && adjs[i] != null && !isNaN(adjs[i]) ? adjs[i] : c;
+    const date = new Date((ts[i] + offset) * 1000).toISOString().slice(0, 10);
+    out.push({ date, close: c, adjClose: a });
+  }
+  out.sort((x, y) => x.date < y.date ? -1 : (x.date > y.date ? 1 : 0));
+  return out;
+}
+
+function periodKey(dateStr, interval) {
+  if (interval === 'd') return dateStr;
+  if (interval === 'm') return dateStr.slice(0, 7);
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const day = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - day + 3);
+  const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((d - firstThu) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  return d.getUTCFullYear() + '-W' + pad2(week);
+}
+
+/* Keep the last observation of each week/month. The row's `date` becomes the period key,
+   so series from different markets/sources align even when their last trading days differ. */
+function resampleSeries(series, interval) {
+  if (interval === 'd') return series;
+  const sorted = series.slice().sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+  const byKey = new Map();
+  for (const r of sorted) byKey.set(periodKey(r.date, interval), { date: periodKey(r.date, interval), d: r.date, close: r.close, adjClose: r.adjClose });
+  return [...byKey.values()];
+}
+
 function showManualCsvBox(rawTicker, sym, params) {
   const box = document.createElement('div');
   box.className = 'manual-csv';
-  const yahooUrl = buildYahooHistoryUrl(sym, params.interval, params.d1, params.d2);
+  const yahooUrl = buildYahooChartUrl(sym, params);
   const yahooTicker = symbolToYahoo(sym);
-  const stooqUrl = buildStooqUrl(sym, params.interval, params.d1, params.d2);
   box.innerHTML =
     '<div style="font-size:12.5px; margin-bottom:6px; color:var(--text-dim);">' +
-    rawTicker + '（' + sym + '）のCSVを貼り付け（Date,Open,High,Low,Close[,Adj Close],Volume 形式。Yahoo Finance / stooq.com のCSVをそのまま貼り付け可）</div>' +
-    '<div style="margin-bottom:4px;"><a href="' + yahooUrl + '" target="_blank" rel="noopener" style="color:var(--teal); font-size:12.5px;">→ Yahoo Financeの履歴データページを開く（ティッカー: ' + yahooTicker + '）</a></div>' +
-    '<div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">開いたページの期間・頻度が反映されていることを確認し、テーブル右上の「Download」からCSVをダウンロード（またはテーブルをそのまま選択してコピー）し、下の欄に貼り付けてください。</div>' +
-    '<div style="margin-bottom:8px;"><a href="' + stooqUrl + '" target="_blank" rel="noopener" style="color:var(--text-faint); font-size:11px;">（参考）stooq.comの直接URL — 現在apikeyが無いとaccess deniedになる場合があります</a></div>' +
-    '<textarea placeholder="Date,Open,High,Low,Close,Adj Close,Volume&#10;2024-01-04,...,...,...,150.2,...,..."></textarea>' +
-    '<button type="button" class="add-row-btn" style="margin-top:8px;">このCSVを取り込む</button>';
+    rawTicker + '（' + sym + '）の株価データを貼り付けてください（Yahoo Financeのチャート用JSON、またはCSVに対応）</div>' +
+    '<div style="margin-bottom:4px;"><a href="' + yahooUrl + '" target="_blank" rel="noopener" style="color:var(--teal); font-size:12.5px;">→ Yahoo FinanceのJSONを新しいタブで開く（ティッカー: ' + yahooTicker + '）</a></div>' +
+    '<div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">開いたタブに表示された文字列全体を全選択（Ctrl+A）→コピーし、下の欄に貼り付けて「取り込む」を押してください。配当調整後終値も含まれるため、配当再投資の計算にも反映されます。</div>' +
+    '<textarea placeholder=\'{"chart":{"result":[{"meta":{...},"timestamp":[...],"indicators":{...}}],"error":null}}\'></textarea>' +
+    '<button type="button" class="add-row-btn" style="margin-top:8px;">このデータを取り込む</button>';
   statusEl.appendChild(box);
   box.querySelector('button').addEventListener('click', () => {
-    const text = box.querySelector('textarea').value;
+    const text = box.querySelector('textarea').value.trim();
     try {
-      const rawSeries = parseStooqCsv(text);
-      if (rawSeries.length < 5) throw new Error('データ点数が不足しています');
-      manualDataCache[sym] = {
-        series: rawSeries.map(r => ({ date: r.date, close: r.close, adjClose: r.close })),
-        source: 'manual'
-      };
-      log(sym + ' を手動CSVから取り込みました（' + rawSeries.length + '件）。再度「分析を実行」を押すとこのデータが使われます。', 'ok');
+      let series, source;
+      if (text.startsWith('{')) {
+        series = parseYahooChartJson(text);
+        source = 'yahoo';
+      } else {
+        const raw = parseStooqCsv(text);
+        series = raw.map(r => ({ date: r.date, close: r.close, adjClose: r.close }));
+        source = 'manual';
+      }
+      if (series.length < 5) throw new Error('データ点数が不足しています');
+      manualDataCache[sym] = { series, source };
+      log(sym + ' を手動データから取り込みました（' + series.length + '件）。再度「分析を実行」を押すとこのデータが使われます。', 'ok');
       box.remove();
     } catch (e) {
-      log('CSVの解析に失敗しました: ' + e.message, 'err');
+      log('データの解析に失敗しました: ' + e.message, 'err');
     }
   });
 }
@@ -1206,6 +1525,64 @@ function showManualWisesheetsBox(wsCandidates, params, apiKey) {
 function fmtPct(x, digits) { return (x * 100).toFixed(digits != null ? digits : 2) + '%'; }
 function fmtYen(x) { return Math.round(x).toLocaleString('ja-JP') + ' 円'; }
 
+const PROPOSAL_DEFS = [
+  { key: 'sameRisk', tag: '提案A', color: '#b995e6', title: 'リスクはそのまま、リターンを上げる',
+    desc: '現在と同じリスク水準で、期待リターンが最大になる配分' },
+  { key: 'sameReturn', tag: '提案B', color: '#e58bb8', title: 'リターンはそのまま、リスクを下げる',
+    desc: '現在以上の期待リターンを保ったまま、リスクが最小になる配分' }
+];
+
+function signedPt(x) { return Math.abs(x * 100) < 0.005 ? '±0.00pt' : (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(2) + 'pt'; }
+function signedYen(x) { return (x >= 0 ? '+' : '−') + Math.round(Math.abs(x)).toLocaleString('ja-JP') + ' 円'; }
+
+function ratioRow(label, a, b, fmt, scale, unit) {
+  let diff = '－';
+  if (a != null && b != null && isFinite(a) && isFinite(b)) {
+    const d = (b - a) * (unit === 'pt' ? 100 : 1);
+    const dec = unit === 'pt' ? 1 : 2;
+    diff = (Math.abs(d) < Math.pow(10, -dec) / 2 ? '±' : (d >= 0 ? '+' : '−')) + Math.abs(d).toFixed(dec) + (unit || '');
+  }
+  return '<tr><td>' + label + '</td><td>' + fmt(a) + '</td><td>' + fmt(b) + '</td><td>' + diff + '</td></tr>';
+}
+
+function renderProposals(r) {
+  const el = document.getElementById('proposals');
+  if (!r.proposals) { el.innerHTML = ''; return; }
+  const cards = PROPOSAL_DEFS.map(def => {
+    const p = r.proposals[def.key];
+    const dMu = p.mu - r.curMu, dSigma = p.sigma - r.curSigma;
+    const already = def.key === 'sameRisk' ? dMu < 0.0005 : dSigma > -0.0005;
+    const metrics =
+      '<tr><td>期待リターン</td><td>' + fmtPct(r.curMu) + '</td><td>' + fmtPct(p.mu) + '</td><td>' + signedPt(dMu) + '</td></tr>' +
+      '<tr><td>リスク</td><td>' + fmtPct(r.curSigma) + '</td><td>' + fmtPct(p.sigma) + '</td><td>' + signedPt(dSigma) + '</td></tr>' +
+      '<tr><td>シャープレシオ</td><td>' + r.curSharpe.toFixed(2) + '</td><td>' + p.sharpe.toFixed(2) + '</td><td>' + (Math.abs(p.sharpe - r.curSharpe) < 0.005 ? '±' : (p.sharpe - r.curSharpe >= 0 ? '+' : '−')) + Math.abs(p.sharpe - r.curSharpe).toFixed(2) + '</td></tr>' +
+      ratioRow('ソルティノレシオ', r.curRatios.sortino, p.ratios.sortino, fmtRatio, 2) +
+      ratioRow('トレイナーレシオ', r.curRatios.treynor, p.ratios.treynor, fmtTreynor, 100, 'pt') +
+      (r.hasBench ? ratioRow('β（対' + r.benchLabel + '）', r.curRatios.beta, p.ratios.beta, fmtRatio, 2) : '');
+    const trades = r.validHoldings.map((hh, i) => {
+      const dW = p.w[i] - r.w[i];
+      const dYen = dW * r.totalMV;
+      const priceYen = hh.lastClose * hh.rate;
+      const shares = priceYen > 0 ? dYen / priceYen : NaN;
+      let action = '<span style="color:var(--text-faint);">変更なし</span>', sh = '－';
+      if (Math.abs(dW) >= 0.0005) {
+        const buy = dW > 0;
+        action = '<span style="color:' + (buy ? 'var(--teal)' : 'var(--rose)') + ';">' + (buy ? '買い ' : '売り ') + signedYen(dYen) + '</span>';
+        if (!isNaN(shares)) sh = (shares >= 0 ? '+' : '−') + Math.abs(Math.round(shares)).toLocaleString('ja-JP') + ' 株';
+      }
+      return '<tr><td class="tk">' + hh.ticker + '</td><td>' + (r.w[i] * 100).toFixed(1) + '%</td><td>' + (p.w[i] * 100).toFixed(1) + '%</td><td>' + action + '</td><td>' + sh + '</td></tr>';
+    }).join('');
+    return '<div class="prop-card">' +
+      '<h4><i class="dot" style="background:' + def.color + '"></i>' + def.tag + '：' + def.title + '</h4>' +
+      '<p class="desc">' + def.desc + '</p>' +
+      (already ? '<p class="prop-note">現在の配分はすでにほぼ効率的で、この条件での改善余地は小さい状態です。</p>' : '') +
+      '<div class="tbl-scroll"><table class="stats"><thead><tr><th></th><th>現在</th><th>提案</th><th>変化</th></tr></thead><tbody>' + metrics + '</tbody></table></div>' +
+      '<div class="tbl-scroll"><table class="stats"><thead><tr><th>銘柄</th><th>現在</th><th>提案</th><th>売買額</th><th>概算株数</th></tr></thead><tbody>' + trades + '</tbody></table></div>' +
+      '</div>';
+  }).join('');
+  el.innerHTML = '<h3 class="sub-h">リバランス提案</h3><div class="prop-grid">' + cards + '</div>';
+}
+
 function renderResults(r) {
   document.getElementById('results').style.display = 'block';
 
@@ -1214,7 +1591,9 @@ function renderResults(r) {
     '<div class="card"><div class="label">時価総額</div><div class="value">' + fmtYen(r.totalMV) + '</div></div>' +
     '<div class="card"><div class="label">期待リターン（年率）</div><div class="value gold">' + fmtPct(r.curMu) + '</div></div>' +
     '<div class="card"><div class="label">リスク（年率標準偏差）</div><div class="value teal">' + fmtPct(r.curSigma) + '</div></div>' +
-    '<div class="card"><div class="label">シャープレシオ</div><div class="value">' + r.curSharpe.toFixed(2) + '</div></div>';
+    '<div class="card"><div class="label">シャープレシオ</div><div class="value">' + r.curSharpe.toFixed(2) + '</div></div>' +
+    '<div class="card"><div class="label">ソルティノレシオ</div><div class="value">' + fmtRatio(r.curRatios.sortino) + '</div></div>' +
+    '<div class="card"><div class="label">トレイナーレシオ' + (r.hasBench ? '（β ' + fmtRatio(r.curRatios.beta) + '、対' + r.benchLabel + '）' : '') + '</div><div class="value">' + fmtTreynor(r.curRatios.treynor) + '</div></div>';
   if (r.hasAcq) {
     const cls = r.pnl >= 0 ? 'green' : 'rose';
     cardHtml += '<div class="card"><div class="label">取得金額合計</div><div class="value">' + fmtYen(r.totalAcq) + '</div></div>' +
@@ -1223,25 +1602,52 @@ function renderResults(r) {
   cards.innerHTML = cardHtml;
 
   const tbody = document.querySelector('#statsTable tbody');
-  const sourceLabel = { wisesheets: 'Wisesheets', stooq: 'stooq', manual: '手動CSV' };
+  const sourceLabel = { wisesheets: 'Wisesheets', stooq: 'stooq', manual: '手動CSV', yahoo: 'Yahoo(JSON)' };
   tbody.innerHTML = r.validHoldings.map((h, i) => {
     const mvDisplay = (h.ccy === 'USD'
       ? '$' + h.mv.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' (≈' + fmtYen(h.mvJPY) + ')'
       : fmtYen(h.mvJPY)) + (h.mvAuto ? ' <span style="color:var(--text-faint); font-size:11px;">※自動計算</span>' : '');
     return '<tr><td class="tk">' + h.ticker + ' (' + h.sym + ')</td><td>' + (sourceLabel[h.source] || '-') + '</td><td>' + mvDisplay + '</td><td>' + (r.w[i]*100).toFixed(1) + '%</td>' +
-      '<td>' + fmtPct(r.muA[i]) + '</td><td>' + fmtPct(Math.sqrt(r.covA[i][i])) + '</td></tr>';
+      '<td>' + fmtPct(r.muA[i]) + '</td><td>' + fmtPct(Math.sqrt(r.covA[i][i])) + '</td>' +
+      '<td>' + fmtRatio(r.holdRatios[i].sharpe) + '</td><td>' + fmtRatio(r.holdRatios[i].sortino) + '</td><td>' + fmtTreynor(r.holdRatios[i].treynor) + '</td></tr>';
   }).join('');
 
   const notes = document.getElementById('notesList');
-  const wsHoldingsCount = r.validHoldings.filter(h => h.source === 'wisesheets').length;
+  const isAdj = (hh) => hh.source === 'wisesheets' || hh.source === 'yahoo';
+  const srcName = { wisesheets: 'Wisesheets API', yahoo: 'Yahoo Finance（貼り付けJSON）', stooq: 'stooq.com', manual: '手動貼り付けCSV' };
+  const bySrc = {};
+  r.validHoldings.forEach(hh => { (bySrc[hh.source] = bySrc[hh.source] || []).push(hh.ticker); });
+  const srcLine = '株価データの取得元: ' +
+    Object.keys(bySrc).map(s => (srcName[s] || s) + '（' + bySrc[s].join('、') + '）').join('、') + '。';
+  const adjT = r.validHoldings.filter(isAdj).map(hh => hh.ticker);
+  const otherT = r.validHoldings.filter(hh => !isAdj(hh)).map(hh => hh.ticker);
+  let divLine;
+  if (!r.divOn) {
+    divLine = '「配当再投資を考慮する」がOFFのため、全銘柄を価格リターン（配当を含まない）で計算しています。';
+  } else {
+    const parts = [];
+    if (adjT.length) parts.push(adjT.join('、') + ' は配当調整後終値から実際の配当込みリターンを計算');
+    if (otherT.length) parts.push(otherT.join('、') + ' は価格リターンに、入力した年間配当利回りを期間按分して加算する近似で計算');
+    divLine = '配当再投資: ' + parts.join('、') + '。';
+  }
+  const wsHoldingsCount = r.validHoldings.filter(hh => hh.source === 'wisesheets').length;
   const noteItems = [
-    wsHoldingsCount > 0
-      ? 'Wisesheets APIで取得した' + wsHoldingsCount + '銘柄（米国株）は配当調整後終値（adjClose）ベースで正確にリターンを計算し、それ以外はstooq.com等の終値ベース＋想定利回りの近似計算です。'
-      : '株価データは stooq.com より取得（終値ベース）。分割は調整済みですが、配当は自動反映されないため、配当再投資は年間利回りを一定按分する近似計算です。',
+    srcLine,
+    divLine,
     'リターン・リスクは対象期間の実績（' + r.params.label + '）に基づく単純平均・年率換算であり、将来の運用成果を保証するものではありません。',
-    '効率的フロンティアは空売りなし（各銘柄ウェイト0〜100%）の制約下でモンテカルロ・シミュレーション（8,000通り）した近似曲線です。',
-    '無リスク金利は年率 ' + (r.rfAnnual*100).toFixed(2) + '% として計算しています。'
+    r.frontierExact
+      ? '効率的フロンティアは、空売りなし（各銘柄ウェイト0〜100%）の制約下で二次計画法により求めた曲線です。背景の点はモンテカルロ・シミュレーション（8,000通り）です。'
+      : '効率的フロンティアは、空売りなし（各銘柄ウェイト0〜100%）の制約下でモンテカルロ・シミュレーション（8,000通り）した近似曲線です。',
+    '無リスク金利は年率 ' + (r.rfAnnual*100).toFixed(2) + '% として計算しています。',
+    'ソルティノレシオは、無リスク金利を最低許容リターン（MAR）として、それを下回る変動のみをリスク（下方偏差）とみなして算出しています。',
+    r.hasBench
+      ? 'トレイナーレシオは（年率リターン − 無リスク金利）÷ β で、βはベンチマーク「' + r.benchLabel + '」に対する感応度です。βが0以下または極小の場合は「－」と表示します。ベンチマークの履歴が短いと共通期間が短くなります。'
+      : 'トレイナーレシオとβを表示するには、「期間・分析条件」でベンチマーク（例: VTI）を入力してください。',
+    '日次・週次・月次の標本数が少ない（例: 5年月次で約60点）と、ソルティノ・トレイナーは特に値が大きくぶれます。リバランス提案はシャープ最大化ではなく平均分散での最適化であり、3指標は参考表示です。'
   ];
+  if (r.proposals) {
+    noteItems.push('リバランス提案は、入力した保有銘柄のみを対象に、過去実績の期待リターンと共分散から最適化した結果です。実績への依存度が高く、将来の成果を保証しません。売買手数料・税金・売買単位は考慮しておらず、株数は直近終値での概算です。');
+  }
   if (wsHoldingsCount > 0) {
     noteItems.push('Wisesheetsは個人利用ライセンスのAPIです。業務・法人・顧客資金運用目的での利用は同社の利用規約をご確認ください。また現時点で米国上場銘柄のみ対応しています。');
   }
@@ -1250,12 +1656,13 @@ function renderResults(r) {
       (r.fxDate ? '（' + r.fxDate + '時点、stooq.comのUSDJPYレート）' : '（手動入力レート）') +
       'で円換算し、ウェイト・評価損益を計算しています。');
   }
-  const autoMvHoldings = r.validHoldings.filter(h => h.mvAuto);
+  const autoMvHoldings = r.validHoldings.filter(hh => hh.mvAuto);
   if (autoMvHoldings.length > 0) {
     noteItems.push('時価が未入力の銘柄は、株数×直近終値で自動計算しています: ' +
-      autoMvHoldings.map(h => h.ticker + '（' + h.mvAsOfDate + '時点）').join('、') + '。');
+      autoMvHoldings.map(hh => hh.ticker + '（' + hh.mvAsOfDate + '時点）').join('、') + '。');
   }
   notes.innerHTML = noteItems.map(n => '<li>' + n + '</li>').join('');
+  renderProposals(r);
 
   const ctx = document.getElementById('frontierChart').getContext('2d');
   if (chartInstance) chartInstance.destroy();
@@ -1266,15 +1673,16 @@ function renderResults(r) {
       type: 'scatter',
       label: 'シミュレーション',
       data: r.mcPoints.map(p => ({ x: p.sigma * 100, y: p.mu * 100 })),
-      backgroundColor: 'rgba(58,70,86,0.5)',
-      pointRadius: 2,
-      pointHoverRadius: 3
+      backgroundColor: 'rgba(58,70,86,0.32)',
+      pointRadius: 1.6,
+      pointHoverRadius: 3,
+      order: 10
     });
   }
   if (r.envelope.length > 0) {
     datasets.push({
       type: 'line',
-      label: '効率的フロンティア（近似）',
+      label: '効率的フロンティア（空売りなし）',
       data: r.envelope.map(p => ({ x: p.sigma * 100, y: p.mu * 100 })),
       borderColor: '#5fb3b3',
       backgroundColor: 'rgba(95,179,179,0.15)',
@@ -1303,12 +1711,36 @@ function renderResults(r) {
   datasets.push({
     type: 'scatter',
     label: '現在のポートフォリオ',
-    data: [{ x: r.curSigma * 100, y: r.curMu * 100 }],
-    backgroundColor: '#c9a15a',
+    data: [{ x: r.curSigma * 100, y: r.curMu * 100, tickerLabel: '現在' }],
+    backgroundColor: '#e0b45c',
+    borderColor: '#ffffff',
+    borderWidth: 2.5,
     pointStyle: 'rectRot',
-    pointRadius: 8,
-    pointHoverRadius: 9
+    pointRadius: 11,
+    pointHoverRadius: 12,
+    order: -2,
+    showTickerLabels: true,
+    labelColor: '#f3d391',
+    labelBold: true
   });
+  if (r.proposals) {
+    PROPOSAL_DEFS.forEach(def => {
+      const p = r.proposals[def.key];
+      datasets.push({
+        type: 'scatter',
+        label: def.tag,
+        data: [{ x: p.sigma * 100, y: p.mu * 100, tickerLabel: def.tag }],
+        backgroundColor: def.color,
+        borderColor: def.color,
+        pointStyle: def.key === 'sameRisk' ? 'rect' : 'rectRounded',
+        pointRadius: 7,
+        pointHoverRadius: 8,
+        order: -1,
+        showTickerLabels: true,
+        labelColor: def.color
+      });
+    });
+  }
   if (r.minVol) {
     datasets.push({
       type: 'scatter',
@@ -1342,23 +1774,45 @@ function renderResults(r) {
           const label = ds.data[i] && ds.data[i].tickerLabel;
           if (!label) return;
           ctx.save();
-          ctx.fillStyle = '#8fa8c9';
-          ctx.font = '11px "IBM Plex Mono", monospace';
+          ctx.fillStyle = ds.labelColor || '#8fa8c9';
+          ctx.font = (ds.labelBold ? '600 13px ' : '11px ') + '"IBM Plex Mono", monospace';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(label, point.x + 7, point.y);
+          ctx.fillText(label, point.x + (ds.labelBold ? 15 : 9), point.y);
           ctx.restore();
         });
       });
     }
   };
 
+  // Dashed guides through the current portfolio: points on the vertical line have the
+  // same risk (proposal A), points on the horizontal line the same return (proposal B).
+  const currentGuidePlugin = {
+    id: 'currentGuidePlugin',
+    beforeDatasetsDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      if (!scales.x || !scales.y) return;
+      const px = scales.x.getPixelForValue(r.curSigma * 100);
+      const py = scales.y.getPixelForValue(r.curMu * 100);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(224,180,92,0.6)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(px, chartArea.top); ctx.lineTo(px, chartArea.bottom);
+      ctx.moveTo(chartArea.left, py); ctx.lineTo(chartArea.right, py);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+
   chartInstance = new Chart(ctx, {
     data: { datasets },
-    plugins: [tickerLabelPlugin],
+    plugins: [tickerLabelPlugin, currentGuidePlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { right: 40 } },
       plugins: {
         legend: { display: false },
         tooltip: {
